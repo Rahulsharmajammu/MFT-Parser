@@ -13,7 +13,11 @@ on `127.0.0.1`, and no data leaves the computer.
    **"Add python.exe to PATH"** during installation.
 2. Double-click `run_windows.bat`. The first run sets up a `.venv` folder and
    installs the dependencies, which takes a minute. After that it starts right away.
-3. A browser tab opens at <http://127.0.0.1:8765/>. Close the console window to stop the app.
+3. A browser tab opens at <http://127.0.0.1:8765/>. If port 8765 is already taken by another app
+   (or an MFT-Parser that is still running), the next free port is used and the console says which.
+4. To stop the app, click **Stop server** at the top of the sidebar, close the console window, or press
+   Ctrl+C in it. Closing only the browser tab leaves the server running. Use **Save session** first if
+   you want to keep your groups.
 
 Manual / other platforms:
 

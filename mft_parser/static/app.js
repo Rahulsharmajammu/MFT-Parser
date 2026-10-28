@@ -871,6 +871,19 @@ async function loadSession(file) {
   }
 }
 
+async function stopServer() {
+  if (!confirm("Stop the MFT-Parser server? Unsaved groups and settings will be lost (use Save session first).")) return;
+  try {
+    const res = await (await fetch("/api/shutdown", { method: "POST" })).json();
+    if (!res.stopped) return setStatus(`Could not stop the server: ${res.reason}`);
+  } catch (err) {
+    return setStatus(`Could not stop the server: ${err.message}`);
+  }
+  document.body.replaceChildren(el("div", { class: "stopped" },
+    el("h2", {}, "MFT-Parser has stopped."),
+    el("p", {}, "You can close this tab. Run run_windows.bat to start it again.")));
+}
+
 // ---------------------------------------------------------------------------
 // Controls wiring
 // ---------------------------------------------------------------------------
@@ -988,6 +1001,7 @@ function wire() {
   $("#exportRaw").addEventListener("click", () => exportCsv("raw"));
   $("#exportFits").addEventListener("click", exportFitsCsv);
   $("#reportBtn").addEventListener("click", () => openReportDialog(visibleGroups()));
+  $("#stopServer").addEventListener("click", stopServer);
 
   $("#exportForm").addEventListener("submit", (e) => {
     if (e.submitter && e.submitter.value === "cancel") return;

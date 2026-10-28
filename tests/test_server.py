@@ -25,3 +25,19 @@ def test_parse_then_process():
     avg = res["groups"][0]["average"]
     assert avg["x"][-1] == 0.5
     assert len(avg["dE2000"]) == len(m["columns"]["time"])
+
+
+def test_shutdown_without_launcher_is_refused():
+    assert client.post("/api/shutdown").json()["stopped"] is False
+
+
+def test_find_port_skips_busy_port():
+    import socket
+
+    from mft_parser.__main__ import HOST, find_port
+
+    with socket.socket() as s:
+        s.bind((HOST, 0))
+        s.listen()
+        busy = s.getsockname()[1]
+        assert find_port(busy) not in (busy, None)
