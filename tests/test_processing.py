@@ -41,3 +41,26 @@ def test_process_group_dose_override():
     assert g1["replicates"][0]["x"][-1] == 0.5
     assert g2["replicates"][0]["x"][-1] == 2
     assert g1["average"]["dE2000_sd"] == [0, 0, 0]
+
+
+@pytest.mark.parametrize("model,true", [
+    ("linear", lambda x: 0.2 + 3 * x),
+    ("power", lambda x: 4 * x ** 0.6),
+    ("exp", lambda x: 5 * (1 - np.exp(-6 * x))),
+])
+def test_fit_recovers_known_curves(model, true):
+    from mft_parser.processing import fit_curve
+    x = np.linspace(0, 0.5, 60)
+    fit = fit_curve(x, true(x), model)
+    assert fit["r2"] == pytest.approx(1.0, abs=1e-6)
+    assert fit["y"][-1] == pytest.approx(true(0.5), rel=1e-4)
+
+
+def test_process_returns_fits_for_delta_metrics():
+    t = list(np.linspace(0, 400, 50))
+    cols = {"time": t, "dE2000": [4 * (v / 800) ** 0.5 for v in t], "L": [50.0] * 50}
+    out = process({"settings": {"fit_model": "power"},
+                   "groups": [{"id": "g", "members": [{"id": "m", "columns": cols}]}]})
+    fits = out["groups"][0]["fits"]
+    assert list(fits) == ["dE2000"]
+    assert fits["dE2000"]["params"]["n"] == pytest.approx(0.5, abs=1e-3)

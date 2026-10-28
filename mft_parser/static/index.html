@@ -17,10 +17,10 @@
   <section>
     <h2>Data</h2>
     <div id="dropzone" class="dropzone">
-      Drop files or a folder here
+      Drop data files, images or a folder here
       <div class="row">
         <label class="btn">Add folder<input id="folderInput" type="file" webkitdirectory multiple hidden></label>
-        <label class="btn">Add files<input id="fileInput" type="file" accept=".txt" multiple hidden></label>
+        <label class="btn">Add files<input id="fileInput" type="file" accept=".txt,.png,.jpg,.jpeg,.bmp,.gif,.webp" multiple hidden></label>
       </div>
     </div>
     <div id="loadStatus" class="muted small"></div>
@@ -61,6 +61,9 @@
       <label>Average grid points
         <input id="avgPoints" type="number" min="2" placeholder="auto">
       </label>
+      <label>Curve fit (Δ metrics)
+        <select id="fitModel"></select>
+      </label>
     </div>
     <div class="seg" id="viewMode" role="radiogroup" aria-label="Display">
       <button data-v="raw">Replicates</button>
@@ -72,9 +75,16 @@
   <section>
     <h2>Charts</h2>
     <div id="metricToggles" class="chips"></div>
-    <label class="inline">Columns
-      <select id="columns"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
-    </label>
+    <div class="row">
+      <label class="inline">Columns
+        <select id="columns"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+      </label>
+      <label class="inline grow">Height
+        <input id="chartHeight" type="range" min="220" max="1000" step="20" value="340">
+        <span id="chartHeightVal" class="muted small"></span>
+      </label>
+    </div>
+    <p class="muted small">Use the expand and camera buttons in each chart's toolbar to enlarge or export it.</p>
   </section>
 
   <section>
@@ -100,7 +110,7 @@
       <select id="addToGroup" class="small"><option value="">Add selection to…</option></select>
     </div>
     <table id="measTable">
-      <thead><tr><th><input type="checkbox" id="selectAll" title="Select all shown"></th><th>Measurement</th><th>Pts</th><th>Groups</th></tr></thead>
+      <thead><tr><th><input type="checkbox" id="selectAll" title="Select all shown"></th><th>Measurement</th><th>Pts</th><th title="Matched images">Img</th><th>Groups</th></tr></thead>
       <tbody></tbody>
     </table>
   </section>
@@ -111,6 +121,7 @@
     <button data-tab="color" class="active">Colorimetry</button>
     <button data-tab="spectra">Spectra</button>
     <span class="spacer"></span>
+    <button id="reportBtn" class="btn primary">Report…</button>
     <button id="exportMean" class="btn">Export means CSV</button>
     <button id="exportRaw" class="btn">Export replicates CSV</button>
   </nav>
@@ -120,8 +131,81 @@
   </div>
   <div id="charts" class="charts"></div>
   <div id="spectra" class="charts" hidden></div>
+  <section id="fitsPanel" class="fits" hidden>
+    <div class="section-head">
+      <h2 id="fitsTitle">Curve fits</h2>
+      <button id="exportFits" class="btn small">Export fits CSV</button>
+    </div>
+    <table id="fitsTable">
+      <thead><tr><th>Group</th><th>Metric</th><th>Model</th><th>Parameters</th><th>R²</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
 </main>
 
+<dialog id="exportDialog">
+  <form id="exportForm" method="dialog">
+    <h2>Export chart</h2>
+    <div class="form">
+      <label class="span2">Title
+        <input id="exTitle" type="text">
+      </label>
+      <label>Theme
+        <select id="exTheme"><option value="light">Light</option><option value="dark">Dark</option></select>
+      </label>
+      <label>Legend
+        <select id="exLegend">
+          <option value="right">Right</option><option value="bottom">Below</option>
+          <option value="inside">Inside (top left)</option><option value="none">None</option>
+        </select>
+      </label>
+      <label>Width (px)
+        <input id="exWidth" type="number" min="300" step="50">
+      </label>
+      <label>Height (px)
+        <input id="exHeight" type="number" min="200" step="50">
+      </label>
+      <label>Format
+        <select id="exFormat"><option value="png">PNG</option><option value="svg">SVG (vector)</option><option value="jpeg">JPEG</option></select>
+      </label>
+      <label>Resolution
+        <select id="exScale"><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+      </label>
+    </div>
+    <div class="row end">
+      <button class="btn" value="cancel">Cancel</button>
+      <button class="btn primary" value="export">Export</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="reportDialog">
+  <form id="reportForm" method="dialog">
+    <h2>Group report</h2>
+    <p id="rpScope" class="muted"></p>
+    <div class="form">
+      <label class="span2">Report title
+        <input id="rpTitle" type="text">
+      </label>
+      <label class="span2">Notes (optional)
+        <textarea id="rpNotes" rows="3"></textarea>
+      </label>
+    </div>
+    <div class="checks">
+      <label><input id="rpCharts" type="checkbox" checked> Charts (the metrics currently selected)</label>
+      <label><input id="rpReplicates" type="checkbox" checked> Measurement table</label>
+      <label><input id="rpFits" type="checkbox" checked> Curve fits (if a fit model is selected)</label>
+      <label><input id="rpImages" type="checkbox" checked> Images matched to each measurement</label>
+    </div>
+    <p id="rpStatus" class="muted small"></p>
+    <div class="row end">
+      <button class="btn" value="cancel">Close</button>
+      <button id="rpGenerate" class="btn primary" value="generate">Generate HTML report</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="/static/app.js"></script>
+<script src="/static/report.js"></script>
 </body>
 </html>

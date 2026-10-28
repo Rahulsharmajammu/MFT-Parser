@@ -33,8 +33,12 @@ Each measurement is a group of files that share a stem, for example `BWS1_BWS1-1
 | `BWS1_BWS1-12.txt` | Colorimetric time series: Time, L\*, a\*, b\*, ΔE76, ΔE2000, ΔL\*, Δa\*, Δb\* |
 | `BWS1_BWS1-12-spect.txt` | Raw start/end spectra, shown as recorded (optional) |
 | `BWS1_BWS1-12-spect_convert.txt` | Ignored |
+| `BWS1_BWS1-12.png`, `BWS1_BWS1-12_after.jpg`, … | Images of the measurement spot, shown in reports (PNG/JPEG/BMP/GIF/WebP) |
 
-Drop a whole folder onto the app, or use **Add folder** / **Add files**.
+Drop a whole folder onto the app, or use **Add folder** / **Add files**. An image belongs to
+the measurement whose name it starts with, followed by `-`, `_`, `.`, a space or `(`. When names
+overlap, the longest match wins, so `BWS1_BWS1-12_after.jpg` goes to `BWS1_BWS1-12` and not to `BWS1_BWS1-1`.
+Images are kept in the browser and downscaled to at most 1600 px.
 
 ## Workflow
 
@@ -58,9 +62,26 @@ Drop a whole folder onto the app, or use **Add folder** / **Add files**.
    - **Averaging**: replicates are linearly interpolated onto a common grid over their
      overlapping range. The number of points defaults to the median replicate length.
      SD is the sample standard deviation (n−1).
-5. **Export**:
-   - **Export means CSV** / **Export replicates CSV** save the processed data.
-   - The camera icon on each chart saves a PNG.
+   - **Curve fit**: linear (`y = a + b·x`), power law (`y = A·xⁿ`) or exponential saturation
+     (`y = A·(1 − e^(−k·x))`). Each group's mean curve is fitted for ΔE00, ΔE\*ab, ΔL\*, Δa\* and Δb\*.
+     The fitted lines appear dotted on the charts, and a table below the charts lists the parameters and R².
+5. **Charts**:
+   - The **Height** slider and the **Columns** setting control the chart size.
+   - The expand button in a chart's toolbar shows that chart full width; click it again to restore.
+   - The **a\*b\* trajectory** chart plots b\* against a\* at equal scale. An open circle marks
+     the start and a filled circle the end.
+6. **Export**:
+   - **Export means CSV** / **Export replicates CSV** / **Export fits CSV** save the processed data.
+   - The camera button in a chart's toolbar opens the export dialog. There you set the title,
+     light or dark theme, legend position, size, resolution and format (PNG, SVG or JPEG).
+   - **Report…** (all visible groups) or the ▤ button on a group card produces a single,
+     self-contained HTML report with one section per group:
+     - before/after colour patches (sRGB renderings of the measured L\*a\*b\*)
+     - mean ± SD at the end of exposure
+     - a table of the measurements as recorded
+     - curve fits, charts and matched images
+
+     To get a PDF, open the report and use the browser's Print → Save as PDF.
    - **Save session** writes a single JSON file with the data, groups and settings, which
      **Load session** restores.
 
