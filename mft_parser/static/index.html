@@ -12,10 +12,13 @@
   <header class="brand">
     <h1>MFT-Parser</h1>
     <span class="muted">Microfading data processor</span>
-    <button id="stopServer" class="btn small ghost" title="Shut down the MFT-Parser server (save your session first)">Stop server</button>
+    <div class="brand-actions">
+      <button id="stopServer" class="btn small ghost" title="Shut down the MFT-Parser server (save your session first)">Stop server</button>
+      <button id="hideSidebar" class="icon-btn hide-panel" title="Hide the side panel">«</button>
+    </div>
   </header>
 
-  <section>
+  <section data-section="data">
     <h2>Data</h2>
     <div id="dropzone" class="dropzone">
       Drop data files, images or a folder here
@@ -33,7 +36,7 @@
     </div>
   </section>
 
-  <section>
+  <section data-section="processing">
     <h2>Processing</h2>
     <div class="form">
       <label>X axis
@@ -73,7 +76,7 @@
     </div>
   </section>
 
-  <section>
+  <section data-section="charts">
     <h2>Charts</h2>
     <div id="metricToggles" class="chips"></div>
     <div class="row">
@@ -85,22 +88,28 @@
         <span id="chartHeightVal" class="muted small"></span>
       </label>
     </div>
-    <p class="muted small">Use the expand and camera buttons in each chart's toolbar to enlarge or export it.</p>
+    <p class="muted small">Each chart's toolbar has buttons to expand, export or hide it.</p>
   </section>
 
-  <section>
+  <section data-section="groups">
     <div class="section-head">
       <h2>Groups</h2>
       <div class="row tight">
+        <button id="foldGroups" class="icon-btn" title="Collapse / expand all groups">⊟</button>
         <button id="autoGroup" class="btn small" title="Group measurements whose names differ only in the trailing replicate number">Auto-group</button>
         <button id="showAllGroups" class="btn small ghost">All</button>
         <button id="hideAllGroups" class="btn small ghost">None</button>
       </div>
     </div>
     <div id="groups"></div>
+    <div class="drop-zones">
+      <div id="dropNewGroup" class="drop-zone">＋ Drop here for a new group</div>
+      <div id="dropRemove" class="drop-zone remove">Drop here to remove from group</div>
+    </div>
+    <p class="muted small">Drag measurements from the table or between groups. Dragging between groups moves; hold Ctrl to copy.</p>
   </section>
 
-  <section>
+  <section data-section="measurements">
     <div class="section-head">
       <h2>Measurements</h2>
       <span id="selCount" class="muted small"></span>
@@ -119,6 +128,7 @@
 
 <main>
   <nav class="tabs">
+    <button id="showSidebar" class="btn small" title="Show the side panel" hidden>☰ Panel</button>
     <button data-tab="color" class="active">Colorimetry</button>
     <button data-tab="spectra">Spectra</button>
     <span class="spacer"></span>
@@ -132,7 +142,7 @@
   </div>
   <div id="charts" class="charts"></div>
   <div id="spectra" class="charts" hidden></div>
-  <section id="fitsPanel" class="fits" hidden>
+  <section id="fitsPanel" class="fits" data-section="fits" hidden>
     <div class="section-head">
       <h2 id="fitsTitle">Curve fits</h2>
       <button id="exportFits" class="btn small">Export fits CSV</button>

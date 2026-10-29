@@ -53,6 +53,10 @@ Images are kept in the browser and downscaled to at most 1600 px.
    - **Auto-group** groups measurements whose names differ only in the trailing number
      (`…-10`, `…-11`, `…-12`).
    - A measurement can belong to several groups.
+   - **Drag and drop**: drag rows from the measurements table onto a group to add them. Dragging a
+     selected row drags the whole selection. Drag a member from one group onto another to move it,
+     or hold Ctrl to copy it. While you drag, drop zones appear for creating a new group and, for
+     group members, for removing them from their group.
 3. **Control what's shown**:
    - Tick or untick a group to show or hide it, and untick a single replicate to drop it
      from that group's plots and average.
@@ -69,9 +73,13 @@ Images are kept in the browser and downscaled to at most 1600 px.
    - **Curve fit**: linear (`y = a + b·x`), power law (`y = A·xⁿ`) or exponential saturation
      (`y = A·(1 − e^(−k·x))`). Each group's mean curve is fitted for ΔE00, ΔE\*ab, ΔL\*, Δa\* and Δb\*.
      The fitted lines appear dotted on the charts, and a table below the charts lists the parameters and R².
+   - **Tidying up**: click a sidebar section heading (Data, Processing, Charts, Groups,
+     Measurements, Curve fits) to collapse it. ⊟ collapses or expands all group cards. « hides
+     the whole side panel and **☰ Panel** brings it back. The browser remembers these choices.
 5. **Charts**:
    - The **Height** slider and the **Columns** setting control the chart size.
    - The expand button in a chart's toolbar shows that chart full width; click it again to restore.
+   - The minus button in a chart's toolbar hides that chart; turn it back on with its chip under Charts.
    - The **a\*b\* trajectory** chart plots b\* against a\* at equal scale. An open circle marks
      the start and a filled circle the end.
 6. **Export**:

@@ -37,6 +37,7 @@ const EXPAND_ICON = {
   width: 1000, height: 1000, transform: "matrix(1 0 0 1 0 0)",
   path: "M50 50h350v100H150v250H50zM600 50h350v350H850V150H600zM50 600h100v250h250v100H50zM850 600h100v350H600V850h250z",
 };
+const HIDE_ICON = { width: 1000, height: 1000, transform: "matrix(1 0 0 1 0 0)", path: "M150 450h700v100H150z" };
 const SESSION_VERSION = 1;
 
 // ---------------------------------------------------------------------------
@@ -325,6 +326,65 @@ function renderGroups() {
   wrap.replaceChildren(...state.groups.map(groupCard));
 }
 
+// ---------------------------------------------------------------------------
+// Drag and drop: table rows and group members onto groups / new-group / remove zones
+// ---------------------------------------------------------------------------
+
+let dragPayload = null; // {ids, from: source group id or null}
+
+function startDrag(e, ids, from) {
+  dragPayload = { ids, from };
+  e.dataTransfer.effectAllowed = "copyMove";
+  e.dataTransfer.setData("text/plain", ids.join("\n"));
+  const ghost = el("div", { class: "drag-ghost" }, ids.length === 1 ? ids[0] : `${ids.length} measurements`);
+  document.body.append(ghost);
+  e.dataTransfer.setDragImage(ghost, 12, 12);
+  setTimeout(() => ghost.remove());
+  // Delay the layout change so the browser has captured the drag source first.
+  setTimeout(() => document.body.classList.add("dragging", ...(from ? ["dragging-member"] : [])));
+}
+
+function endDrag() {
+  dragPayload = null;
+  document.body.classList.remove("dragging", "dragging-member");
+  document.querySelectorAll(".drop-over").forEach((n) => n.classList.remove("drop-over"));
+}
+
+function dropTarget(node, onDrop) {
+  node.addEventListener("dragover", (e) => {
+    if (!dragPayload) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = dragPayload.from && !e.ctrlKey ? "move" : "copy";
+    node.classList.add("drop-over");
+  });
+  node.addEventListener("dragleave", (e) => {
+    if (!node.contains(e.relatedTarget)) node.classList.remove("drop-over");
+  });
+  node.addEventListener("drop", (e) => {
+    if (!dragPayload) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const payload = dragPayload;
+    const copy = e.ctrlKey;
+    endDrag();
+    onDrop(payload, copy);
+    renderSidebar();
+    scheduleRender();
+  });
+}
+
+function removeFromGroup(g, ids) {
+  g.members = g.members.filter((x) => !ids.includes(x));
+  g.excluded = g.excluded.filter((x) => !ids.includes(x));
+}
+
+function dropIntoGroup(target, { ids, from }, copy) {
+  if (from === target.id) return;
+  target.members = sortedIds(new Set([...target.members, ...ids]));
+  const source = state.groups.find((g) => g.id === from);
+  if (source && !copy) removeFromGroup(source, ids);
+}
+
 function groupCard(g) {
   const included = g.members.filter((m) => !g.excluded.includes(m)).length;
   const head = el("div", { class: "group-head" },
@@ -352,6 +412,7 @@ function groupCard(g) {
     }, "✕"),
   );
   const card = el("div", { class: "group" + (g.visible ? "" : " hidden-group") }, head);
+  dropTarget(card, (payload, copy) => dropIntoGroup(g, payload, copy));
   if (!g.collapsed) {
     const body = el("div", { class: "group-body" },
       el("div", { class: "opts" },
@@ -365,7 +426,11 @@ function groupCard(g) {
       ...g.members.map((id) => {
         const excluded = g.excluded.includes(id);
         const nImg = imagesFor(id).length;
-        return el("div", { class: "member" + (excluded ? " excluded" : "") },
+        return el("div", {
+          class: "member" + (excluded ? " excluded" : ""), draggable: true,
+          title: "Drag to another group to move it (hold Ctrl to copy)",
+          ondragstart: (e) => startDrag(e, [id], g.id), ondragend: endDrag,
+        },
           el("input", {
             type: "checkbox", checked: !excluded, title: "Include in plots and average",
             onchange: (e) => {
@@ -377,11 +442,7 @@ function groupCard(g) {
           nImg ? el("span", { class: "muted small", title: imagesFor(id).join("\n") }, `${nImg} img`) : null,
           el("button", {
             class: "icon-btn", title: "Remove from group",
-            onclick: () => {
-              g.members = g.members.filter((x) => x !== id);
-              g.excluded = g.excluded.filter((x) => x !== id);
-              renderSidebar(); scheduleRender();
-            },
+            onclick: () => { removeFromGroup(g, [id]); renderSidebar(); scheduleRender(); },
           }, "✕"));
       }));
     card.append(body);
@@ -406,7 +467,12 @@ function renderTable() {
     const m = state.measurements.get(id);
     const sel = state.selection.has(id);
     const tip = Object.entries(m.meta).map(([k, v]) => `${k}: ${v}`).join("\n");
-    return el("tr", { class: sel ? "sel" : "" },
+    return el("tr", {
+      class: sel ? "sel" : "", draggable: true,
+      // Dragging a selected row drags the whole selection.
+      ondragstart: (e) => startDrag(e, state.selection.has(id) ? sortedIds(state.selection) : [id], null),
+      ondragend: endDrag,
+    },
       el("td", {}, el("input", {
         type: "checkbox", checked: sel,
         onclick: (e) => toggleSelect(id, e.target.checked, e.shiftKey, ids),
@@ -606,6 +672,7 @@ function screenConfig(metric) {
     modeBarButtonsToAdd: [
       { name: "Export image…", icon: Plotly.Icons.camera, click: () => openExportDialog(metric) },
       { name: "Expand / restore", icon: EXPAND_ICON, click: () => toggleExpand(metric) },
+      { name: "Hide this chart (re-enable it under Charts)", icon: HIDE_ICON, click: () => hideMetric(metric) },
     ],
   };
 }
@@ -885,6 +952,49 @@ async function stopServer() {
 }
 
 // ---------------------------------------------------------------------------
+// Collapsible UI (remembered per browser)
+// ---------------------------------------------------------------------------
+
+const UI_KEY = "mft-parser-ui";
+const ui = { collapsed: [], sidebarHidden: false };
+
+function loadUi() {
+  try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY)) || {}); } catch { /* storage unavailable */ }
+}
+
+function saveUi() {
+  try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* storage unavailable */ }
+}
+
+function setupCollapsibleSections() {
+  document.querySelectorAll("section[data-section]").forEach((sec) => {
+    const key = sec.dataset.section;
+    const h2 = sec.querySelector(":scope > h2, :scope > .section-head h2");
+    sec.classList.toggle("collapsed", ui.collapsed.includes(key));
+    h2.title = "Click to collapse / expand";
+    h2.addEventListener("click", () => {
+      const collapsed = sec.classList.toggle("collapsed");
+      ui.collapsed = collapsed ? [...new Set([...ui.collapsed, key])] : ui.collapsed.filter((k) => k !== key);
+      saveUi();
+    });
+  });
+}
+
+function setSidebarHidden(hidden) {
+  ui.sidebarHidden = hidden;
+  document.body.classList.toggle("sidebar-hidden", hidden);
+  $("#showSidebar").hidden = !hidden;
+  saveUi();
+  resizeCharts();
+}
+
+function hideMetric(metric) {
+  state.settings.metrics = state.settings.metrics.filter((k) => k !== metric);
+  syncControls();
+  scheduleRender();
+}
+
+// ---------------------------------------------------------------------------
 // Controls wiring
 // ---------------------------------------------------------------------------
 
@@ -954,9 +1064,10 @@ function wire() {
   });
 
   const dz = $("#dropzone");
-  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("over"); });
+  dz.addEventListener("dragover", (e) => { if (dragPayload) return; e.preventDefault(); dz.classList.add("over"); });
   dz.addEventListener("dragleave", () => dz.classList.remove("over"));
   dz.addEventListener("drop", async (e) => {
+    if (dragPayload) return;
     e.preventDefault();
     dz.classList.remove("over");
     uploadFiles(await filesFromDrop(e.dataTransfer));
@@ -1002,6 +1113,26 @@ function wire() {
   $("#exportFits").addEventListener("click", exportFitsCsv);
   $("#reportBtn").addEventListener("click", () => openReportDialog(visibleGroups()));
   $("#stopServer").addEventListener("click", stopServer);
+  $("#hideSidebar").addEventListener("click", () => setSidebarHidden(true));
+  $("#showSidebar").addEventListener("click", () => setSidebarHidden(false));
+  $("#foldGroups").addEventListener("click", () => {
+    const anyOpen = state.groups.some((g) => !g.collapsed);
+    state.groups.forEach((g) => { g.collapsed = anyOpen; });
+    renderGroups();
+  });
+  dropTarget($("#dropNewGroup"), ({ ids, from }, copy) => {
+    const g = createGroup(`Group ${state.nextGroupId}`, sortedIds(ids));
+    g.collapsed = false;
+    const source = state.groups.find((x) => x.id === from);
+    if (source && !copy) removeFromGroup(source, ids);
+  });
+  dropTarget($("#dropRemove"), ({ ids, from }) => {
+    const source = state.groups.find((x) => x.id === from);
+    if (source) removeFromGroup(source, ids);
+  });
+  loadUi();
+  setupCollapsibleSections();
+  setSidebarHidden(ui.sidebarHidden);
 
   $("#exportForm").addEventListener("submit", (e) => {
     if (e.submitter && e.submitter.value === "cancel") return;
