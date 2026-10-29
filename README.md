@@ -1,6 +1,10 @@
 # MFT-Parser
 
 A local web app for processing and visualising microfading tester (MFT) data.
+It reads the data files produced by the **Microfader** developed by
+[Instytut Fotonowy](https://www.fotonowy.pl/). MFT-Parser is an independent tool and is not
+made or endorsed by Instytut Fotonowy.
+
 Load many measurements, group the replicates, then overlay the groups as
 individual curves or as mean ± SD. It replaces the usual copy-paste work in Excel.
 
