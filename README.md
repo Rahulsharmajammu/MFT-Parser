@@ -61,6 +61,12 @@ Images are kept in the browser and downscaled to at most 1600 px.
      selected row drags the whole selection. Drag a member from one group onto another to move it,
      or hold Ctrl to copy it. While you drag, drop zones appear for creating a new group and, for
      group members, for removing them from their group.
+   - **Reference groups**: open a group card and set its **Role** to *Blue Wool standard* or
+     *Comparison*. References are drawn on every chart as grey mean lines (dashed for Blue Wool,
+     dotted for comparisons) with a name label at the end of the line. They're also included in
+     exported images and in every group's report charts. The axes scale to the sample groups
+     only, so a fast-fading reference can run off the top of the chart without squashing your
+     samples. Tick *Include reference groups in axis scaling* under Charts to scale to everything.
 3. **Control what's shown**:
    - Tick or untick a group to show or hide it, and untick a single replicate to drop it
      from that group's plots and average.

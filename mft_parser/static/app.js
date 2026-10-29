@@ -25,13 +25,20 @@ const THEMES = {
   light: {
     surface: "#ffffff", text: "#0b0b0b", text2: "#52514e", grid: "#e9e8e4", axis: "#c9c8c2",
     series: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
+    refs: ["#5f5e5a", "#9a9993", "#3a3936", "#7d7c76"],
   },
   dark: {
     surface: "#1a1a19", text: "#f0efec", text2: "#c3c2b7", grid: "#2c2c2a", axis: "#4a4a46",
     series: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
+    refs: ["#c3c2b7", "#8f8e86", "#e6e5de", "#a5a49b"],
   },
 };
 const DASHES = ["solid", "dash", "dot", "dashdot"];
+// Reference groups (Blue Wool standards, comparisons) are drawn in greys on every chart
+// but are left out of axis autoscaling unless the user opts in.
+const ROLES = { sample: "Sample", bws: "Blue Wool standard", comparison: "Comparison" };
+const ROLE_SHORT = { bws: "BWS", comparison: "Ref" };
+const ROLE_DASH = { bws: "dash", comparison: "dot" };
 const SVG_DASH = { solid: "", dash: "6 3", dot: "2 3", dashdot: "6 3 2 3" };
 const EXPAND_ICON = {
   width: 1000, height: 1000, transform: "matrix(1 0 0 1 0 0)",
@@ -67,6 +74,7 @@ const state = {
     metrics: METRICS.map((m) => m.key),
     columns: 2,
     chart_height: 340,
+    ref_autoscale: false,
   },
   exportOpts: { theme: "light", width: 1200, height: 750, scale: 2, format: "png", legend: "right", titles: {} },
 };
@@ -94,11 +102,20 @@ function screenTheme() {
   return matchMedia("(prefers-color-scheme: dark)").matches ? THEMES.dark : THEMES.light;
 }
 
+function isRef(g) {
+  return Boolean(g.role && g.role !== "sample");
+}
+
 function groupColor(g, theme = screenTheme()) {
+  if (isRef(g)) {
+    const i = state.groups.filter(isRef).indexOf(g);
+    return theme.refs[Math.max(i, 0) % theme.refs.length];
+  }
   return theme.series[g.colorIdx % theme.series.length];
 }
 
 function groupDash(g) {
+  if (isRef(g)) return ROLE_DASH[g.role];
   return DASHES[Math.floor(g.colorIdx / THEMES.light.series.length) % DASHES.length];
 }
 
@@ -397,6 +414,7 @@ function groupCard(g) {
       type: "text", value: g.name, title: "Rename group",
       onchange: (e) => { g.name = e.target.value || g.name; renderGroupSelect(); renderTable(); scheduleRender(); },
     }),
+    isRef(g) ? el("span", { class: "badge", title: ROLES[g.role] }, ROLE_SHORT[g.role]) : null,
     el("span", { class: "muted small" }, `${included}/${g.members.length}`),
     el("button", { class: "icon-btn", title: "Report for this group", onclick: () => openReportDialog([g]) }, "▤"),
     el("button", {
@@ -423,6 +441,12 @@ function groupCard(g) {
           onchange: (e) => { g.maxDose = e.target.value; scheduleRender(); },
         }),
         "Mlux·h"),
+      el("div", { class: "opts" },
+        "Role",
+        el("select", {
+          title: "Blue Wool standards and comparisons are drawn in grey on every chart, without affecting the axis scaling",
+          onchange: (e) => { g.role = e.target.value; renderGroups(); scheduleRender(); },
+        }, ...Object.entries(ROLES).map(([v, l]) => el("option", { value: v, selected: (g.role || "sample") === v }, l)))),
       ...g.members.map((id) => {
         const excluded = g.excluded.includes(id);
         const nImg = imagesFor(id).length;
@@ -574,12 +598,14 @@ function buildTraces(metric, result, view, theme, withLegend = false) {
   if (metric === "ab") return abTraces(result, view, theme, withLegend);
   const traces = [];
   const fmt = state.settings.x_axis === "dose" ? ".3f" : ".1f";
-  for (const r of result.groups) {
+  for (const r of refsFirst(result.groups)) {
     const g = r.group;
+    const ref = isRef(g);
     const color = groupColor(g, theme);
     const dash = groupDash(g);
-    const showMean = (view === "mean" || view === "both") && r.average && r.average[metric];
-    if (view === "raw" || view === "both") {
+    // References are always drawn as their mean, whatever the display mode.
+    const showMean = (ref || view === "mean" || view === "both") && r.average && r.average[metric];
+    if (!ref && (view === "raw" || view === "both")) {
       r.replicates.forEach((rep, i) => {
         if (!rep[metric]) return;
         traces.push({
@@ -599,19 +625,19 @@ function buildTraces(metric, result, view, theme, withLegend = false) {
         const lower = avg[metric].map((v, i) => v - sd[i]);
         traces.push({
           x: [...avg.x, ...[...avg.x].reverse()], y: [...upper, ...lower.reverse()],
-          type: "scatter", mode: "lines", fill: "toself", fillcolor: withAlpha(color, 0.16),
-          line: { width: 0 }, hoverinfo: "skip", name: g.name + " SD", legendgroup: g.id, showlegend: false,
+          type: "scatter", mode: "lines", fill: "toself", fillcolor: withAlpha(color, ref ? 0.1 : 0.16),
+          line: { width: 0 }, hoverinfo: "skip", name: g.name + " SD", legendgroup: g.id, showlegend: false, _ref: ref,
         });
       }
       traces.push({
         x: avg.x, y: avg[metric], type: "scatter", mode: "lines", name: avg.n > 1 ? `${g.name} (n=${avg.n})` : g.name,
         legendgroup: g.id, showlegend: withLegend,
-        line: { color, width: 2.25, dash },
-        customdata: sd,
-        hovertemplate: `<b>${g.name}</b> (n=${avg.n})<br>x=%{x:${fmt}}<br>mean=%{y:.3f} ± %{customdata:.3f}<extra></extra>`,
+        line: { color, width: ref ? 2 : 2.25, dash },
+        customdata: sd, _ref: ref, _label: ref ? g.name : null,
+        hovertemplate: `<b>${g.name}</b>${ref ? ` (${ROLES[g.role]})` : ""} (n=${avg.n})<br>x=%{x:${fmt}}<br>mean=%{y:.3f} ± %{customdata:.3f}<extra></extra>`,
       });
     }
-    const fit = r.fits && r.fits[metric];
+    const fit = !ref && r.fits && r.fits[metric];
     if (fit && !fit.error) {
       traces.push({
         x: fit.x, y: fit.y, type: "scatter", mode: "lines", legendgroup: g.id, showlegend: withLegend,
@@ -628,9 +654,10 @@ function abTraces(result, view, theme, withLegend) {
   const traces = [];
   const xName = state.settings.x_axis === "dose" ? "dose" : "t";
   const fmt = state.settings.x_axis === "dose" ? ".3f" : ".1f";
-  const line = (x, y, xs, color, dash, width, opacity, name, label, legend) => {
+  const line = (x, y, xs, color, dash, width, opacity, name, label, legend, ref = false) => {
     const n = x.length;
     traces.push({
+      _ref: ref, _label: ref ? label : null,
       x, y, customdata: xs, type: "scatter", mode: "lines+markers", name, legendgroup: label, showlegend: legend, opacity,
       line: { color, width, dash },
       // Open circle marks the start, filled circle the end of the trajectory.
@@ -641,20 +668,67 @@ function abTraces(result, view, theme, withLegend) {
       hovertemplate: `<b>${label}</b><br>${xName}=%{customdata:${fmt}}<br>a*=%{x:.3f}, b*=%{y:.3f}<extra></extra>`,
     });
   };
-  for (const r of result.groups) {
+  for (const r of refsFirst(result.groups)) {
     const g = r.group;
+    const ref = isRef(g);
     const color = groupColor(g, theme);
     const dash = groupDash(g);
-    const showMean = (view === "mean" || view === "both") && r.average && r.average.a;
-    if (view === "raw" || view === "both") {
+    const showMean = (ref || view === "mean" || view === "both") && r.average && r.average.a;
+    if (!ref && (view === "raw" || view === "both")) {
       r.replicates.forEach((rep, i) => {
         if (rep.a && rep.b) line(rep.a, rep.b, rep.x, color, dash, view === "both" ? 1 : 1.75, view === "both" ? 0.45 : 0.9,
           g.name, rep.id, withLegend && !showMean && i === 0);
       });
     }
-    if (showMean) line(r.average.a, r.average.b, r.average.x, color, dash, 2.25, 1, g.name, g.name, withLegend);
+    if (showMean) line(r.average.a, r.average.b, r.average.x, color, dash, ref ? 2 : 2.25, 1, g.name, g.name, withLegend, ref);
   }
   return traces;
+}
+
+// References are drawn first so the samples sit on top of them.
+function refsFirst(entries) {
+  return [...entries.filter((r) => isRef(r.group)), ...entries.filter((r) => !isRef(r.group))];
+}
+
+// Fixes the axis ranges to the sample traces (unless references should count too) and puts a
+// name label at the end of each reference line that is still inside the plot.
+function finishLayout(metric, traces, layout, theme) {
+  const samples = traces.filter((t) => !t._ref);
+  let xr = null;
+  let yr = null;
+  if (!state.settings.ref_autoscale && samples.length && samples.length < traces.length) {
+    const extent = (key, pad) => {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const t of samples) for (const v of t[key]) if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+      if (!Number.isFinite(lo)) return null;
+      const span = hi - lo || Math.abs(hi) || 1;
+      return [lo - span * pad, hi + span * pad];
+    };
+    xr = extent("x", metric === "ab" ? 0.06 : 0.01);
+    yr = extent("y", 0.06);
+    if (xr) Object.assign(layout.xaxis, { range: xr, autorange: false });
+    if (yr) Object.assign(layout.yaxis, { range: yr, autorange: false });
+  }
+  const inside = (x, y) => (!xr || (x >= xr[0] && x <= xr[1])) && (!yr || (y >= yr[0] && y <= yr[1]));
+  // Vertical extent of what is drawn, so labels near the top edge hang below their line instead.
+  let yTop = yr ? yr[1] : -Infinity;
+  let yBottom = yr ? yr[0] : Infinity;
+  if (!yr) for (const t of traces) for (const v of t.y) if (Number.isFinite(v)) { yTop = Math.max(yTop, v); yBottom = Math.min(yBottom, v); }
+  const labelSize = Math.round(layout.title.font.size * 0.8);
+  layout.annotations = traces.filter((t) => t._label).flatMap((t) => {
+    for (let i = t.x.length - 1; i >= 0; i--) {
+      if (inside(t.x[i], t.y[i])) {
+        const nearTop = t.y[i] > yTop - (yTop - yBottom) * 0.1;
+        return [{
+          x: t.x[i], y: t.y[i], text: t._label, showarrow: false, xanchor: "right", yanchor: nearTop ? "top" : "bottom",
+          font: { size: labelSize, color: theme.text2 }, bgcolor: withAlpha(theme.surface, 0.75),
+        }];
+      }
+    }
+    return [];
+  });
+  return layout;
 }
 
 function fitParamText(fit) {
@@ -679,7 +753,8 @@ function screenConfig(metric) {
 
 function renderLegend(result) {
   const items = result ? result.groups.map((r) => el("span", { class: "item" },
-    swatch(r.group), r.group.name, el("span", { class: "n" }, `n=${r.replicates.length}`))) : [];
+    swatch(r.group), r.group.name,
+    el("span", { class: "n" }, `${isRef(r.group) ? `${ROLE_SHORT[r.group.role]} · ` : ""}n=${r.replicates.length}`))) : [];
   $("#legend").replaceChildren(...items);
 }
 
@@ -723,8 +798,8 @@ function renderMetricCharts() {
   divs.forEach((d) => d.classList.toggle("expanded", d.dataset.metric === state.expanded));
   charts.replaceChildren(...divs);
   wanted.forEach((m, i) => {
-    Plotly.react(divs[i], buildTraces(m.key, lastResult, state.settings.view, theme),
-      baseLayout(m.key, theme), screenConfig(m.key));
+    const traces = buildTraces(m.key, lastResult, state.settings.view, theme);
+    Plotly.react(divs[i], traces, finishLayout(m.key, traces, baseLayout(m.key, theme), theme), screenConfig(m.key));
   });
 }
 
@@ -843,7 +918,7 @@ async function exportChart() {
   o.titles[exportMetric] = title;
   const theme = THEMES[o.theme];
   const traces = buildTraces(exportMetric, lastResult, state.settings.view, theme, o.legend !== "none");
-  const layout = baseLayout(exportMetric, theme, { title, exporting: true, legend: o.legend });
+  const layout = finishLayout(exportMetric, traces, baseLayout(exportMetric, theme, { title, exporting: true, legend: o.legend }), theme);
   const div = await renderOffscreen(traces, layout, o.width, o.height);
   try {
     const url = await Plotly.toImage(div, {
@@ -1006,6 +1081,7 @@ const CONTROL_MAP = {
 function syncControls() {
   for (const [id, key] of Object.entries(CONTROL_MAP)) $("#" + id).value = state.settings[key];
   $("#chartHeight").value = state.settings.chart_height;
+  $("#refAutoscale").checked = state.settings.ref_autoscale;
   $("#chartHeightVal").textContent = `${state.settings.chart_height}px`;
   document.querySelectorAll("#viewMode button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.settings.view));
   document.querySelectorAll("#metricToggles input").forEach((i) => { i.checked = state.settings.metrics.includes(i.value); });
@@ -1034,6 +1110,7 @@ function wire() {
       scheduleRender();
     });
   }
+  $("#refAutoscale").addEventListener("change", (e) => { state.settings.ref_autoscale = e.target.checked; scheduleRender(); });
   $("#chartHeight").addEventListener("input", (e) => {
     state.settings.chart_height = Number(e.target.value);
     $("#chartHeightVal").textContent = `${e.target.value}px`;

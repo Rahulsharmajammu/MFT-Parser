@@ -71,8 +71,10 @@ function patchPair(label, start, end, big = false) {
 
 async function chartImage(metric, entry, opts) {
   const theme = THEMES.light;
-  const traces = buildTraces(metric, { groups: [entry] }, state.settings.view, theme, true);
-  const layout = baseLayout(metric, theme, { exporting: true, legend: "bottom" });
+  // Each group's charts also show the visible reference groups (Blue Wool standards, comparisons).
+  const groups = [...opts.refs.filter((r) => r.group !== entry.group), entry];
+  const traces = buildTraces(metric, { groups }, state.settings.view, theme, true);
+  const layout = finishLayout(metric, traces, baseLayout(metric, theme, { exporting: true, legend: "bottom" }), theme);
   const div = await renderOffscreen(traces, layout, opts.width, opts.height);
   try {
     // SVG keeps reports small and sharp when printed.
@@ -94,7 +96,7 @@ async function groupSection(entry, opts) {
 
   const dates = [...new Set(ms.map((m) => m.meta.Date).filter(Boolean))];
   const illum = [...new Set(ms.map((m) => m.meta.Illuminant).filter(Boolean))];
-  parts.push(`<h2>${esc(g.name)}</h2>
+  parts.push(`<h2>${esc(g.name)}${isRef(g) ? ` <span class="role">${esc(ROLES[g.role])}</span>` : ""}</h2>
     <p class="meta">${members.length} measurement${members.length === 1 ? "" : "s"}
     ${state.settings.x_axis === "dose" ? ` · max dose ${fmtNum(dose, 3)} Mlux·h` : ""}
     ${illum.length ? ` · illuminant ${esc(illum.join(", "))}` : ""}
@@ -148,7 +150,7 @@ async function groupSection(entry, opts) {
 
   if (opts.charts) {
     const imgs = [];
-    for (const k of state.settings.metrics) imgs.push(`<img src="${await chartImage(k, entry, { width: 800, height: 520 })}" alt="${esc(METRIC_LABEL[k])}">`);
+    for (const k of state.settings.metrics) imgs.push(`<img src="${await chartImage(k, entry, { width: 800, height: 520, refs: opts.refs })}" alt="${esc(METRIC_LABEL[k])}">`);
     parts.push(`<h3>Charts</h3><div class="chart-grid">${imgs.join("")}</div>`);
   }
 
@@ -165,6 +167,7 @@ const REPORT_CSS = `
   body { font: 13px/1.45 "Segoe UI", system-ui, Arial, sans-serif; color: #1b1b1a; background: #fff; margin: 0 auto; max-width: 1000px; padding: 24px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   h2 { font-size: 18px; margin: 0 0 2px; border-bottom: 2px solid #1b1b1a; padding-bottom: 4px; }
+  h2 .role { font-size: 12px; font-weight: 500; color: #66655f; border: 1px solid #d8d7d2; border-radius: 4px; padding: 1px 6px; vertical-align: middle; }
   h3 { font-size: 14px; margin: 18px 0 6px; color: #333; }
   .meta, .note { color: #66655f; }
   .note { font-size: 11px; }
@@ -208,10 +211,13 @@ async function generateReport() {
   btn.disabled = true;
   try {
     status.textContent = "Processing…";
-    const result = await processGroups(reportGroups);
+    const refGroups = state.groups.filter((g) => isRef(g) && g.visible && includedMembers(g).length && !reportGroups.includes(g));
+    const result = await processGroups([...reportGroups, ...refGroups]);
+    opts.refs = result.groups.filter((e) => isRef(e.group));
+    const entries = result.groups.filter((e) => reportGroups.includes(e.group));
     const sections = [];
-    for (const [i, entry] of result.groups.entries()) {
-      status.textContent = `Building section ${i + 1} of ${result.groups.length}: ${entry.group.name}`;
+    for (const [i, entry] of entries.entries()) {
+      status.textContent = `Building section ${i + 1} of ${entries.length}: ${entry.group.name}`;
       sections.push(await groupSection(entry, opts));
     }
     const s = state.settings;
