@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Local web app to process and visualise microfading tester (MFT) data"
 readme = "README.md"
 requires-python = ">=3.10"
+classifiers = ["License :: OSI Approved :: The Unlicense (Unlicense)"]
 dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.29",

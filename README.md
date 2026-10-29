@@ -108,8 +108,16 @@ pip install -e ".[dev]"
 pytest
 ```
 
+The test fixtures in `tests/data/` are synthetic files in the Microfader format, not real
+measurements. Regenerate them with `python tests/make_synthetic_data.py`.
+
 - `mft_parser/parsing.py` reads the file formats.
 - `mft_parser/processing.py` handles dose conversion, smoothing and averaging.
 - `mft_parser/server.py` holds the FastAPI endpoints.
 - `mft_parser/static/` is the frontend, in plain JS. Plotly.js is served from the installed
   `plotly` package, so the app works offline.
+
+## License
+
+Released into the public domain under [the Unlicense](LICENSE): use, copy, modify and
+distribute it for any purpose, with no conditions.
