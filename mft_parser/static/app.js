@@ -17,6 +17,7 @@ const METRICS = [
 ];
 const METRIC_LABEL = Object.fromEntries(METRICS.map((m) => [m.key, m.label]));
 const X_LABELS = { dose: "Dose (Mlux·h)", time: "Time (s)", time_min: "Time (min)" };
+const SMOOTHING_LABELS = { none: "None", moving_average: "Moving average", savgol: "Savitzky–Golay" };
 const FIT_LABELS = { none: "None", linear: "Linear", power: "Power law", exp: "Exponential saturation" };
 const IMAGE_RE = /\.(png|jpe?g|bmp|gif|webp)$/i;
 // Plot colours per theme. The eight categorical slots are validated for CVD separation in this order;
@@ -54,6 +55,8 @@ const SESSION_VERSION = 1;
 const state = {
   measurements: new Map(), // id -> {id, meta, columns, spectra}
   images: new Map(), // filename -> data URL
+  overviews: [], // overall photos with marked areas, see overview.js
+  nextOverviewId: 1,
   groups: [], // {id, name, colorIdx, visible, collapsed, maxDose, members: [], excluded: []}
   selection: new Set(),
   filter: "",
@@ -66,6 +69,7 @@ const state = {
     x_axis: "dose",
     max_dose: 0.5,
     smoothing: "none",
+    smooth_mode: "overlay",
     window: 5,
     polyorder: 2,
     avg_points: "",
@@ -540,7 +544,7 @@ async function processGroups(groupList) {
   const s = state.settings;
   const body = {
     settings: {
-      x_axis: s.x_axis, max_dose: Number(s.max_dose) || 0.5, smoothing: s.smoothing,
+      x_axis: s.x_axis, max_dose: Number(s.max_dose) || 0.5, smoothing: s.smoothing, smooth_mode: s.smooth_mode,
       window: Number(s.window) || 5, polyorder: Number(s.polyorder) || 2,
       avg_points: s.avg_points === "" ? null : Number(s.avg_points),
       fit_model: s.fit_model,
@@ -603,39 +607,58 @@ function buildTraces(metric, result, view, theme, withLegend = false) {
     const ref = isRef(g);
     const color = groupColor(g, theme);
     const dash = groupDash(g);
-    // References are always drawn as their mean, whatever the display mode.
-    const showMean = (ref || view === "mean" || view === "both") && r.average && r.average[metric];
-    if (!ref && (view === "raw" || view === "both")) {
+    // With a smoothing overlay the measured data is drawn faintly underneath the smoothed curves.
+    const sm = r.smoothed;
+    const faint = Boolean(sm);
+    // References are always drawn as their (smoothed, when available) mean, whatever the display mode.
+    const avg = ref && sm ? sm.average : r.average;
+    const showMean = (ref || view === "mean" || view === "both") && avg && avg[metric];
+    const showRaw = !ref && (view === "raw" || view === "both");
+    if (showRaw) {
       r.replicates.forEach((rep, i) => {
         if (!rep[metric]) return;
         traces.push({
           x: rep.x, y: rep[metric], type: "scatter", mode: "lines", name: g.name, legendgroup: g.id,
-          showlegend: withLegend && !showMean && i === 0,
-          line: { color, width: view === "both" ? 1 : 1.75, dash },
-          opacity: view === "both" ? 0.45 : 0.9,
+          showlegend: withLegend && !showMean && !faint && i === 0,
+          line: { color, width: view === "both" || faint ? 1 : 1.75, dash },
+          opacity: faint ? 0.3 : view === "both" ? 0.45 : 0.9,
           hovertemplate: `<b>${rep.id}</b><br>${g.name}<br>x=%{x:${fmt}}<br>y=%{y:.3f}<extra></extra>`,
         });
       });
     }
     if (showMean) {
-      const avg = r.average;
       const sd = avg[metric + "_sd"];
       if (avg.n > 1) {
         const upper = avg[metric].map((v, i) => v + sd[i]);
         const lower = avg[metric].map((v, i) => v - sd[i]);
         traces.push({
           x: [...avg.x, ...[...avg.x].reverse()], y: [...upper, ...lower.reverse()],
-          type: "scatter", mode: "lines", fill: "toself", fillcolor: withAlpha(color, ref ? 0.1 : 0.16),
+          type: "scatter", mode: "lines", fill: "toself", fillcolor: withAlpha(color, ref || faint ? 0.1 : 0.16),
           line: { width: 0 }, hoverinfo: "skip", name: g.name + " SD", legendgroup: g.id, showlegend: false, _ref: ref,
         });
       }
+      const meanFaint = faint && !ref;
       traces.push({
         x: avg.x, y: avg[metric], type: "scatter", mode: "lines", name: avg.n > 1 ? `${g.name} (n=${avg.n})` : g.name,
-        legendgroup: g.id, showlegend: withLegend,
-        line: { color, width: ref ? 2 : 2.25, dash },
+        legendgroup: g.id, showlegend: withLegend && !meanFaint,
+        line: { color, width: meanFaint ? 1.25 : ref ? 2 : 2.25, dash }, opacity: meanFaint ? 0.55 : 1,
         customdata: sd, _ref: ref, _label: ref ? g.name : null,
         hovertemplate: `<b>${g.name}</b>${ref ? ` (${ROLES[g.role]})` : ""} (n=${avg.n})<br>x=%{x:${fmt}}<br>mean=%{y:.3f} ± %{customdata:.3f}<extra></extra>`,
       });
+    }
+    if (sm && !ref) {
+      const smLabel = SMOOTHING_LABELS[state.settings.smoothing].toLowerCase();
+      const smoothedLine = (x, y, name, width, legend, hoverName) => traces.push({
+        x, y, type: "scatter", mode: "lines", name, legendgroup: g.id, showlegend: withLegend && legend,
+        line: { color, width, dash },
+        hovertemplate: `<b>${hoverName}</b> (${smLabel})<br>x=%{x:${fmt}}<br>y=%{y:.3f}<extra></extra>`,
+      });
+      if (view === "raw") {
+        sm.replicates.forEach((rep, i) => rep[metric] && smoothedLine(rep.x, rep[metric], `${g.name} (smoothed)`, 1.75, i === 0, rep.id));
+      } else if (sm.average[metric]) {
+        const n = sm.average.n;
+        smoothedLine(sm.average.x, sm.average[metric], `${g.name}${n > 1 ? ` (n=${n})` : ""} smoothed`, 2.5, true, g.name);
+      }
     }
     const fit = !ref && r.fits && r.fits[metric];
     if (fit && !fit.error) {
@@ -673,14 +696,24 @@ function abTraces(result, view, theme, withLegend) {
     const ref = isRef(g);
     const color = groupColor(g, theme);
     const dash = groupDash(g);
-    const showMean = (ref || view === "mean" || view === "both") && r.average && r.average.a;
+    const sm = r.smoothed;
+    const faint = Boolean(sm) && !ref;
+    const avg = ref && sm ? sm.average : r.average;
+    const showMean = (ref || view === "mean" || view === "both") && avg && avg.a;
     if (!ref && (view === "raw" || view === "both")) {
       r.replicates.forEach((rep, i) => {
-        if (rep.a && rep.b) line(rep.a, rep.b, rep.x, color, dash, view === "both" ? 1 : 1.75, view === "both" ? 0.45 : 0.9,
-          g.name, rep.id, withLegend && !showMean && i === 0);
+        if (rep.a && rep.b) line(rep.a, rep.b, rep.x, color, dash, view === "both" || faint ? 1 : 1.75,
+          faint ? 0.3 : view === "both" ? 0.45 : 0.9, g.name, rep.id, withLegend && !showMean && !faint && i === 0);
       });
     }
-    if (showMean) line(r.average.a, r.average.b, r.average.x, color, dash, ref ? 2 : 2.25, 1, g.name, g.name, withLegend, ref);
+    if (showMean) line(avg.a, avg.b, avg.x, color, dash, faint ? 1.25 : ref ? 2 : 2.25, faint ? 0.55 : 1, g.name, g.name, withLegend && !faint, ref);
+    if (faint) {
+      if (view === "raw") {
+        sm.replicates.forEach((rep, i) => rep.a && line(rep.a, rep.b, rep.x, color, dash, 1.75, 1, `${g.name} (smoothed)`, rep.id, withLegend && i === 0));
+      } else if (sm.average.a) {
+        line(sm.average.a, sm.average.b, sm.average.x, color, dash, 2.5, 1, `${g.name} smoothed`, g.name, withLegend);
+      }
+    }
   }
   return traces;
 }
@@ -759,6 +792,11 @@ function renderLegend(result) {
 }
 
 async function renderPlots() {
+  document.body.classList.toggle("tab-overview", state.tab === "overview");
+  if (state.tab === "overview") {
+    renderOverview();
+    return;
+  }
   const charts = $("#charts");
   const spectra = $("#spectra");
   charts.style.gridTemplateColumns = `repeat(${state.settings.columns}, minmax(0, 1fr))`;
@@ -950,19 +988,25 @@ function exportCsv(kind) {
   const keys = METRICS.filter((m) => m.key !== "ab").map((m) => m.key);
   const xName = X_LABELS[state.settings.x_axis];
   const rows = [];
+  // With a smoothing overlay the smoothed values are added as extra columns next to the measured ones.
+  const overlay = lastResult.groups.some((r) => r.smoothed);
+  const v = (arr, i) => (arr ? arr[i] : "");
   if (kind === "mean") {
-    rows.push(["group", "n", xName, ...keys.flatMap((k) => [`${k}_mean`, `${k}_sd`])]);
+    rows.push(["group", "n", xName, ...keys.flatMap((k) => [`${k}_mean`, `${k}_sd`, ...(overlay ? [`${k}_smoothed`] : [])])]);
     for (const r of lastResult.groups) {
       const a = r.average;
       if (!a) continue;
+      const s = r.smoothed ? r.smoothed.average : {};
       a.x.forEach((x, i) => rows.push([r.group.name, a.n, x,
-        ...keys.flatMap((k) => [a[k] ? a[k][i] : "", a[k + "_sd"] ? a[k + "_sd"][i] : ""])]));
+        ...keys.flatMap((k) => [v(a[k], i), v(a[k + "_sd"], i), ...(overlay ? [v(s[k], i)] : [])])]));
     }
   } else {
-    rows.push(["group", "measurement", xName, ...keys]);
-    for (const r of lastResult.groups) for (const rep of r.replicates) {
-      rep.x.forEach((x, i) => rows.push([r.group.name, rep.id, x, ...keys.map((k) => (rep[k] ? rep[k][i] : ""))]));
-    }
+    rows.push(["group", "measurement", xName, ...keys, ...(overlay ? keys.map((k) => `${k}_smoothed`) : [])]);
+    for (const r of lastResult.groups) r.replicates.forEach((rep, j) => {
+      const s = r.smoothed ? r.smoothed.replicates[j] : {};
+      rep.x.forEach((x, i) => rows.push([r.group.name, rep.id, x, ...keys.map((k) => v(rep[k], i)),
+        ...(overlay ? keys.map((k) => v(s[k], i)) : [])]));
+    });
   }
   downloadCsv(`mft_${kind === "mean" ? "means" : "replicates"}.csv`, rows);
 }
@@ -988,6 +1032,8 @@ function saveSession() {
     nextGroupId: state.nextGroupId,
     measurements: [...state.measurements.values()],
     images: Object.fromEntries(state.images),
+    overviews: state.overviews,
+    nextOverviewId: state.nextOverviewId,
   };
   download("mft_session.json", JSON.stringify(session), "application/json");
 }
@@ -998,6 +1044,8 @@ async function loadSession(file) {
     if (s.version !== SESSION_VERSION) throw new Error("unsupported session version");
     state.measurements = new Map(s.measurements.map((m) => [m.id, m]));
     state.images = new Map(Object.entries(s.images || {}));
+    state.overviews = s.overviews || [];
+    state.nextOverviewId = s.nextOverviewId || state.overviews.length + 1;
     state.groups = s.groups;
     state.settings = { ...state.settings, ...s.settings };
     state.exportOpts = { ...state.exportOpts, ...(s.exportOpts || {}) };
@@ -1074,7 +1122,7 @@ function hideMetric(metric) {
 // ---------------------------------------------------------------------------
 
 const CONTROL_MAP = {
-  xAxis: "x_axis", maxDose: "max_dose", smoothing: "smoothing", window: "window",
+  xAxis: "x_axis", maxDose: "max_dose", smoothing: "smoothing", smoothMode: "smooth_mode", window: "window",
   polyorder: "polyorder", avgPoints: "avg_points", columns: "columns", fitModel: "fit_model",
 };
 
@@ -1086,6 +1134,7 @@ function syncControls() {
   document.querySelectorAll("#viewMode button").forEach((b) => b.classList.toggle("on", b.dataset.v === state.settings.view));
   document.querySelectorAll("#metricToggles input").forEach((i) => { i.checked = state.settings.metrics.includes(i.value); });
   $("#polyLabel").hidden = state.settings.smoothing !== "savgol";
+  $("#smoothModeLabel").hidden = state.settings.smoothing === "none";
   $("#maxDose").disabled = state.settings.x_axis !== "dose";
 }
 
@@ -1131,6 +1180,7 @@ function wire() {
     if (!confirm("Remove all measurements, images and groups?")) return;
     state.measurements.clear();
     state.images.clear();
+    state.overviews = [];
     state.groups = [];
     state.selection.clear();
     state.nextColor = 0;
@@ -1183,12 +1233,16 @@ function wire() {
     document.querySelectorAll(".tabs button[data-tab]").forEach((x) => x.classList.toggle("active", x === b));
     $("#charts").hidden = state.tab !== "color";
     $("#spectra").hidden = state.tab !== "spectra";
+    $("#overview").hidden = state.tab !== "overview";
     scheduleRender();
   }));
   $("#exportMean").addEventListener("click", () => exportCsv("mean"));
   $("#exportRaw").addEventListener("click", () => exportCsv("raw"));
   $("#exportFits").addEventListener("click", exportFitsCsv);
   $("#reportBtn").addEventListener("click", () => openReportDialog(visibleGroups()));
+  $("#rpPickVisible").addEventListener("click", () => setReportPicks(visibleGroups()));
+  $("#rpPickAll").addEventListener("click", () => setReportPicks(state.groups));
+  $("#rpPickNone").addEventListener("click", () => setReportPicks([]));
   $("#stopServer").addEventListener("click", stopServer);
   $("#hideSidebar").addEventListener("click", () => setSidebarHidden(true));
   $("#showSidebar").addEventListener("click", () => setSidebarHidden(false));

@@ -207,3 +207,28 @@ body.dragging-member .drop-zone.remove { display: block; }
 }
 .icon-btn.hide-panel { font-size: 18px; line-height: 1; padding: 0 4px; }
 section.collapsed > h2:first-child { margin-bottom: 0; }
+
+/* Overview images */
+body.tab-overview #legend, body.tab-overview #fitsPanel, body.tab-overview #empty { display: none !important; }
+#overview { padding: 10px 0; }
+.ov-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.ov-toolbar .btn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
+.ov-tools { margin-top: 0; width: auto; }
+.ov-tools button { padding: 4px 10px; }
+.ov-body { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.ov-stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; user-select: none; }
+.ov-stage img { display: block; max-width: 100%; max-height: calc(100vh - 190px); border-radius: 6px; }
+.ov-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.ov-overlay.tool-rect, .ov-overlay.tool-ellipse, .ov-overlay.tool-point { cursor: crosshair; }
+.ov-overlay [data-ann] { cursor: move; }
+.ov-list { flex: 1; min-width: 280px; max-width: 460px; }
+.ov-list h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-secondary); margin: 0 0 6px; }
+.ov-ann { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; background: var(--surface-1); cursor: pointer; }
+.ov-ann.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ov-ann input[type=text] { width: 70px; }
+.ov-ann select { flex: 1; min-width: 0; }
+.ov-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #0006; flex: none; }
+
+/* Report group picker */
+.rp-groups { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; margin: 4px 0 10px; }
+.rp-groups label { display: flex; align-items: center; gap: 6px; padding: 2px 0; }

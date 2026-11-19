@@ -56,6 +56,12 @@
           <option value="savgol">Savitzky–Golay</option>
         </select>
       </label>
+      <label id="smoothModeLabel" title="Draw the smoothed curve over the measured data, or use smoothed data everywhere (charts, averages, fits, exports)">Show smoothing as
+        <select id="smoothMode">
+          <option value="overlay">Curve over the data</option>
+          <option value="replace">Replace the data</option>
+        </select>
+      </label>
       <label>Window (points)
         <input id="window" type="number" min="3" step="2" value="5">
       </label>
@@ -132,6 +138,7 @@
     <button id="showSidebar" class="btn small" title="Show the side panel" hidden>☰ Panel</button>
     <button data-tab="color" class="active">Colorimetry</button>
     <button data-tab="spectra">Spectra</button>
+    <button data-tab="overview">Overview</button>
     <span class="spacer"></span>
     <button id="reportBtn" class="btn primary">Report…</button>
     <button id="exportMean" class="btn">Export means CSV</button>
@@ -143,6 +150,7 @@
   </div>
   <div id="charts" class="charts"></div>
   <div id="spectra" class="charts" hidden></div>
+  <div id="overview" hidden></div>
   <section id="fitsPanel" class="fits" data-section="fits" hidden>
     <div class="section-head">
       <h2 id="fitsTitle">Curve fits</h2>
@@ -193,8 +201,16 @@
 
 <dialog id="reportDialog">
   <form id="reportForm" method="dialog">
-    <h2>Group report</h2>
-    <p id="rpScope" class="muted"></p>
+    <h2>Report</h2>
+    <div class="section-head">
+      <span class="muted small">Groups to include</span>
+      <div class="row tight">
+        <button type="button" id="rpPickVisible" class="btn small ghost">Visible</button>
+        <button type="button" id="rpPickAll" class="btn small ghost">All</button>
+        <button type="button" id="rpPickNone" class="btn small ghost">None</button>
+      </div>
+    </div>
+    <div id="rpGroups" class="rp-groups"></div>
     <div class="form">
       <label class="span2">Report title
         <input id="rpTitle" type="text">
@@ -208,16 +224,22 @@
       <label><input id="rpReplicates" type="checkbox" checked> Measurement table</label>
       <label><input id="rpFits" type="checkbox" checked> Curve fits (if a fit model is selected)</label>
       <label><input id="rpImages" type="checkbox" checked> Images matched to each measurement</label>
+      <label><input id="rpOverview" type="checkbox" checked> Overview images with the marked areas</label>
+    </div>
+    <div class="checks">
+      <label><input type="radio" name="rpSplit" value="one" checked> One file with a section per group</label>
+      <label><input type="radio" name="rpSplit" value="each"> A separate file for each group</label>
     </div>
     <p id="rpStatus" class="muted small"></p>
     <div class="row end">
       <button class="btn" value="cancel">Close</button>
-      <button id="rpGenerate" class="btn primary" value="generate">Generate HTML report</button>
+      <button id="rpGenerate" class="btn primary" value="generate">Generate report</button>
     </div>
   </form>
 </dialog>
 
 <script src="/static/app.js"></script>
 <script src="/static/report.js"></script>
+<script src="/static/overview.js"></script>
 </body>
 </html>

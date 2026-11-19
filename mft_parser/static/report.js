@@ -1,22 +1,35 @@
 "use strict";
 
 // Per-group HTML reports: before/after colour patches, end-of-exposure summary,
-// replicate table, curve fits, charts and the images matched to each measurement.
-// The report is a single self-contained .html file (print it to PDF from the browser).
+// replicate table, curve fits, charts, overview images and the images matched to each measurement.
+// Reports are self-contained .html files (print them to PDF from the browser).
 
-let reportGroups = [];
-
+// Opens the report dialog with `groups` ticked; any other group can be ticked there too.
 function openReportDialog(groups) {
-  reportGroups = groups.filter((g) => includedMembers(g).length);
-  if (!reportGroups.length) {
+  const reportable = state.groups.filter((g) => includedMembers(g).length);
+  if (!reportable.length) {
     setStatus("No groups with loaded measurements to report on.");
     return;
   }
-  $("#rpScope").textContent = reportGroups.length === 1
-    ? `Group: ${reportGroups[0].name}` : `${reportGroups.length} visible groups (one section each)`;
+  $("#rpGroups").replaceChildren(...reportable.map((g) => el("label", {},
+    el("input", { type: "checkbox", value: g.id }),
+    swatch(g), g.name,
+    isRef(g) ? el("span", { class: "badge", title: ROLES[g.role] }, ROLE_SHORT[g.role]) : null,
+    el("span", { class: "muted small" }, `n=${includedMembers(g).length}`))));
+  setReportPicks(groups);
   if (!$("#rpTitle").value) $("#rpTitle").value = "Microfading report";
   $("#rpStatus").textContent = "";
   $("#reportDialog").showModal();
+}
+
+function setReportPicks(groups) {
+  const ids = new Set(groups.map((g) => g.id));
+  document.querySelectorAll("#rpGroups input").forEach((i) => { i.checked = ids.has(i.value); });
+}
+
+function pickedReportGroups() {
+  const ids = new Set([...document.querySelectorAll("#rpGroups input:checked")].map((i) => i.value));
+  return state.groups.filter((g) => ids.has(g.id));
 }
 
 // CIELAB (D65 white) -> sRGB hex. `clipped` is true when the colour is outside the sRGB gamut.
@@ -121,7 +134,7 @@ async function groupSection(entry, opts) {
       <table><thead><tr><th>Metric</th><th>Mean</th><th>SD</th></tr></thead><tbody>
       ${keys.map((k) => `<tr><td>${esc(METRIC_LABEL[k])}</td><td>${fmtNum(avg[k][last])}</td><td>${avg.n > 1 ? fmtNum(avg[k + "_sd"][last]) : "–"}</td></tr>`).join("")}
       </tbody></table>
-      ${state.settings.smoothing !== "none" ? `<p class="note">Values are after ${esc(state.settings.smoothing.replace("_", " "))} smoothing (window ${esc(state.settings.window)}).</p>` : ""}`);
+      ${state.settings.smoothing !== "none" && state.settings.smooth_mode === "replace" ? `<p class="note">Values are after ${esc(SMOOTHING_LABELS[state.settings.smoothing].toLowerCase())} smoothing (window ${esc(state.settings.window)}).</p>` : ""}`);
   }
 
   if (opts.replicates) {
@@ -146,6 +159,16 @@ async function groupSection(entry, opts) {
       <td>${f.error ? "fit failed" : esc(f.equation)}</td><td>${f.error ? esc(f.error) : esc(fitParamText(f))}</td><td>${f.error ? "" : fmtNum(f.r2, 4)}</td></tr>`);
     parts.push(`<h3>Curve fits (${esc(FIT_LABELS[state.settings.fit_model])}, x = ${esc(xLabel)})</h3>
       <table><thead><tr><th>Metric</th><th>Model</th><th>Parameters</th><th>R²</th></tr></thead><tbody>${rows.join("")}</tbody></table>`);
+  }
+
+  if (opts.overview) {
+    const mine = (a) => annGroups(a).includes(g);
+    const figs = state.overviews.filter((o) => o.annotations.some(mine)).map((o) => {
+      const labels = o.annotations.filter(mine).map((a) => a.label).filter(Boolean);
+      return `<figure class="overview">${overviewSvg(o, { highlight: mine, imageRef: `ovimg-${o.id}` })}
+        <figcaption>${esc(o.name)}${labels.length ? ` — marked: ${esc(labels.join(", "))}` : ""}</figcaption></figure>`;
+    });
+    if (figs.length) parts.push(`<h3>Location</h3>${figs.join("")}`);
   }
 
   if (opts.charts) {
@@ -194,12 +217,50 @@ const REPORT_CSS = `
   .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
   .image-grid figure { margin: 0; break-inside: avoid; }
   .image-grid img { width: 100%; border-radius: 4px; }
+  figure.overview { margin: 6px 0 12px; break-inside: avoid; }
+  figure.overview svg { display: block; width: 100%; height: auto; max-height: 640px; }
+  section.group figure.overview { max-width: 560px; }
+  .overview-list { columns: 2; font-size: 12px; margin: 6px 0 0; padding-left: 18px; }
   @media print { body { padding: 0; } }
 `;
+
+// Overview images shown once at the top, with every mark and a key to what each mark is linked to.
+function overviewHeader() {
+  return state.overviews.map((o) => `
+    <figure class="overview">${overviewSvg(o, { imageRef: `ovimg-${o.id}` })}
+      <figcaption>${esc(o.name)}</figcaption></figure>
+    ${o.annotations.length ? `<ul class="overview-list">${o.annotations.map((a) => `<li><b>${esc(a.label || "(no label)")}</b>${linkName(a) ? ` — ${esc(linkName(a))}` : ""}</li>`).join("")}</ul>` : ""}`).join("");
+}
+
+function reportHtml(sections, opts, settingsText) {
+  // Each overview image is embedded once and referenced from every figure that shows it.
+  const defs = opts.overview && state.overviews.length
+    ? `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${state.overviews.map((o) => `<image id="ovimg-${o.id}" href="${o.src}" width="${o.w}" height="${o.h}"/>`).join("")}</defs></svg>` : "";
+  const overview = opts.overview ? overviewHeader() : "";
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(opts.title)}</title><style>${REPORT_CSS}</style></head>
+<body>
+${defs}
+<header>
+  <h1>${esc(opts.title)}</h1>
+  <div class="meta">Generated ${esc(new Date().toLocaleString())} with MFT-Parser</div>
+  <div class="settings">${esc(settingsText)}</div>
+  ${opts.notes ? `<div class="notes">${esc(opts.notes)}</div>` : ""}
+  ${overview ? `<h3>Overview</h3>${overview}` : ""}
+</header>
+${sections.join("\n")}
+</body></html>`;
+}
 
 async function generateReport() {
   const status = $("#rpStatus");
   const btn = $("#rpGenerate");
+  const picked = pickedReportGroups();
+  if (!picked.length) {
+    status.textContent = "Tick at least one group.";
+    return;
+  }
   const opts = {
     title: $("#rpTitle").value || "Microfading report",
     notes: $("#rpNotes").value,
@@ -207,14 +268,16 @@ async function generateReport() {
     images: $("#rpImages").checked,
     replicates: $("#rpReplicates").checked,
     fits: $("#rpFits").checked,
+    overview: $("#rpOverview").checked,
   };
+  const separate = document.querySelector("input[name=rpSplit]:checked").value === "each";
   btn.disabled = true;
   try {
     status.textContent = "Processing…";
-    const refGroups = state.groups.filter((g) => isRef(g) && g.visible && includedMembers(g).length && !reportGroups.includes(g));
-    const result = await processGroups([...reportGroups, ...refGroups]);
+    const refGroups = state.groups.filter((g) => isRef(g) && g.visible && includedMembers(g).length && !picked.includes(g));
+    const result = await processGroups([...picked, ...refGroups]);
     opts.refs = result.groups.filter((e) => isRef(e.group));
-    const entries = result.groups.filter((e) => reportGroups.includes(e.group));
+    const entries = result.groups.filter((e) => picked.includes(e.group));
     const sections = [];
     for (const [i, entry] of entries.entries()) {
       status.textContent = `Building section ${i + 1} of ${entries.length}: ${entry.group.name}`;
@@ -224,25 +287,21 @@ async function generateReport() {
     const settingsText = [
       `x axis: ${X_LABELS[s.x_axis]}`,
       s.x_axis === "dose" ? `default max dose ${s.max_dose} Mlux·h (time scaled linearly)` : null,
-      `smoothing: ${s.smoothing === "none" ? "none" : `${s.smoothing.replace("_", " ")}, window ${s.window}${s.smoothing === "savgol" ? `, order ${s.polyorder}` : ""}`}`,
+      `smoothing: ${s.smoothing === "none" ? "none" : `${SMOOTHING_LABELS[s.smoothing].toLowerCase()}, window ${s.window}${s.smoothing === "savgol" ? `, order ${s.polyorder}` : ""}${s.smooth_mode === "overlay" ? ", drawn over the measured data" : ", applied to the data"}`}`,
       `display: ${{ raw: "replicates", mean: "mean ± SD", both: "replicates + mean ± SD" }[s.view]}`,
       s.fit_model !== "none" ? `fit: ${FIT_LABELS[s.fit_model]}` : null,
     ].filter(Boolean).join(" · ");
-    const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(opts.title)}</title><style>${REPORT_CSS}</style></head>
-<body>
-<header>
-  <h1>${esc(opts.title)}</h1>
-  <div class="meta">Generated ${esc(new Date().toLocaleString())} with MFT-Parser</div>
-  <div class="settings">${esc(settingsText)}</div>
-  ${opts.notes ? `<div class="notes">${esc(opts.notes)}</div>` : ""}
-</header>
-${sections.join("\n")}
-</body></html>`;
-    const name = reportGroups.length === 1 ? `MFT_report_${reportGroups[0].name}` : `MFT_report_${new Date().toISOString().slice(0, 10)}`;
-    download(`${safeFilename(name)}.html`, html, "text/html");
-    status.textContent = `Report saved (${sections.length} section${sections.length === 1 ? "" : "s"}). Open it and use Print → Save as PDF for a PDF.`;
+    if (separate) {
+      // Browsers may ask once whether this page may download several files.
+      entries.forEach((entry, i) => {
+        download(`${safeFilename(`MFT_report_${entry.group.name}`)}.html`, reportHtml([sections[i]], opts, settingsText), "text/html");
+      });
+      status.textContent = `${entries.length} report file${entries.length === 1 ? "" : "s"} saved. If only one appeared, allow multiple downloads for this page and generate again.`;
+    } else {
+      const name = entries.length === 1 ? `MFT_report_${entries[0].group.name}` : `MFT_report_${new Date().toISOString().slice(0, 10)}`;
+      download(`${safeFilename(name)}.html`, reportHtml(sections, opts, settingsText), "text/html");
+      status.textContent = `Report saved (${sections.length} section${sections.length === 1 ? "" : "s"}). Open it and use Print → Save as PDF for a PDF.`;
+    }
   } finally {
     btn.disabled = false;
   }

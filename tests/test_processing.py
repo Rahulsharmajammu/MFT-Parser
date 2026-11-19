@@ -64,3 +64,22 @@ def test_process_returns_fits_for_delta_metrics():
     fits = out["groups"][0]["fits"]
     assert list(fits) == ["dE2000"]
     assert fits["dE2000"]["params"]["n"] == pytest.approx(0.5, abs=1e-3)
+
+
+def test_overlay_keeps_raw_data_and_adds_smoothed_curves():
+    rng = np.random.default_rng(0)
+    t = np.linspace(0, 400, 80)
+    y = 3 * (t / 400) ** 0.5 + rng.normal(0, 0.2, t.size)
+    cols = {"time": t.tolist(), "dE2000": y.tolist()}
+    req = {"settings": {"smoothing": "savgol", "window": 11, "smooth_mode": "overlay"},
+           "groups": [{"id": "g", "members": [{"id": "m", "columns": cols}]}]}
+    g = process(req)["groups"][0]
+    assert g["replicates"][0]["dE2000"] == pytest.approx(y.tolist())  # raw data untouched
+    sm = g["smoothed"]["average"]["dE2000"]
+    assert np.std(np.diff(sm)) < np.std(np.diff(y)) / 2  # smoothed curve is much less noisy
+    assert len(g["smoothed"]["replicates"]) == 1
+
+    req["settings"]["smooth_mode"] = "replace"
+    g = process(req)["groups"][0]
+    assert "smoothed" not in g
+    assert g["replicates"][0]["dE2000"] != pytest.approx(y.tolist())

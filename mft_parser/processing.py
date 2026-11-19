@@ -125,25 +125,36 @@ def fit_curve(x: np.ndarray, y: np.ndarray, model: str) -> dict:
 
 
 def process(request: dict) -> dict:
-    """Request: {"settings": {...}, "groups": [{"id", "max_dose"?, "members": [{"id", "columns"}]}]}"""
+    """Request: {"settings": {...}, "groups": [{"id", "max_dose"?, "members": [{"id", "columns"}]}]}
+
+    With ``smooth_mode == "overlay"`` the replicates, average and fits stay unsmoothed and the
+    smoothed curves are returned separately under ``"smoothed"`` so both can be drawn.
+    """
     settings = request.get("settings", {})
     default_dose = float(settings.get("max_dose", 0.5))
     n_points = settings.get("avg_points")
+    n_points = int(n_points) if n_points else None
+    overlay = settings.get("smooth_mode") == "overlay" and settings.get("smoothing", "none") != "none"
+    data_settings = {**settings, "smoothing": "none"} if overlay else settings
     result = []
     for g in request.get("groups", []):
         dose = g.get("max_dose")
         dose = float(dose) if dose not in (None, "") else default_dose
-        reps = []
-        for mem in g.get("members", []):
-            r = prepare_replicate(mem["columns"], settings, dose)
-            reps.append((mem["id"], r))
+        members = g.get("members", [])
+        reps = [(m["id"], prepare_replicate(m["columns"], data_settings, dose)) for m in members]
         entry = {"id": g["id"], "replicates": [_tolist({"id": i, **r}) for i, r in reps]}
         if reps:
-            avg = average_replicates([r for _, r in reps], int(n_points) if n_points else None)
+            avg = average_replicates([r for _, r in reps], n_points)
             model = settings.get("fit_model", "none")
             if model in FIT_MODELS:
                 entry["fits"] = {m: _finite(fit_curve(avg["x"], avg[m], model)) for m in FIT_METRICS if m in avg}
             entry["average"] = _tolist(avg)
+            if overlay:
+                sm = [(m["id"], prepare_replicate(m["columns"], settings, dose)) for m in members]
+                entry["smoothed"] = {
+                    "replicates": [_tolist({"id": i, **r}) for i, r in sm],
+                    "average": _tolist(average_replicates([r for _, r in sm], n_points)),
+                }
         result.append(entry)
     return {"groups": result}
 

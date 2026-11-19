@@ -77,6 +77,12 @@ Images are kept in the browser and downscaled to at most 1600 px.
    - **Max dose**: the total dose at the end of the run (default 0.5 Mlux·h). Time is scaled
      linearly to dose, which assumes constant illuminance. Each group can override it.
    - **Smoothing**: moving average or Savitzky–Golay, applied to each replicate before averaging.
+     **Show smoothing as** chooses how it's used:
+     - *Curve over the data* (default): the measured data stays as it is, drawn faintly, and a bold
+       smoothed curve is drawn over it for each group (in Replicates view, one per measurement).
+       Averages, fits and the report tables use the measured data. The CSV exports gain
+       `…_smoothed` columns.
+     - *Replace the data*: the smoothed data is used everywhere: charts, averages, fits and exports.
    - **Averaging**: replicates are linearly interpolated onto a common grid over their
      overlapping range. The number of points defaults to the median replicate length.
      SD is the sample standard deviation (n−1).
@@ -92,19 +98,29 @@ Images are kept in the browser and downscaled to at most 1600 px.
    - The minus button in a chart's toolbar hides that chart; turn it back on with its chip under Charts.
    - The **a\*b\* trajectory** chart plots b\* against a\* at equal scale. An open circle marks
      the start and a filled circle the end.
-6. **Export**:
+6. **Overview images** (the **Overview** tab): add a photo of the whole object, separate from
+   the close-up images the Microfader camera takes. Drag on the photo to mark measured areas with a
+   rectangle or ellipse, or click to place a point. Give each mark a label and link it to a group or
+   a single measurement; marks take the colour of the linked group. Click a mark to select it, drag it
+   to move it, and press Delete to remove it. You can add several overview images.
+7. **Export**:
    - **Export means CSV** / **Export replicates CSV** / **Export fits CSV** save the processed data.
    - The camera button in a chart's toolbar opens the export dialog. There you set the title,
      light or dark theme, legend position, size, resolution and format (PNG, SVG or JPEG).
-   - **Report…** (all visible groups) or the ▤ button on a group card produces a single,
-     self-contained HTML report with one section per group:
+   - **Report…** opens the report dialog with the visible groups ticked; the ▤ button on a group
+     card opens it with just that group ticked. Tick any groups you want (**Visible / All / None**
+     help), then choose one file with a section per group, or a separate file for each group.
+     Reports are self-contained HTML files. Each group section has:
      - before/after colour patches (sRGB renderings of the measured L\*a\*b\*)
      - mean ± SD at the end of exposure
      - a table of the measurements as recorded
      - curve fits, charts and matched images
+     - its location on the overview images, with that group's marks highlighted
 
-     To get a PDF, open the report and use the browser's Print → Save as PDF.
-   - **Save session** writes a single JSON file with the data, groups and settings, which
+     The overview images with all marks and a key appear once at the top. To get a PDF, open the
+     report and use the browser's Print → Save as PDF. For separate files, the browser may ask once
+     whether the page may download several files.
+   - **Save session** writes a single JSON file with the data, images, overview marks, groups and settings, which
      **Load session** restores.
 
 ## Development
