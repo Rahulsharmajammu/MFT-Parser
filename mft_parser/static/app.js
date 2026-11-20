@@ -170,7 +170,7 @@ function safeFilename(s) {
 }
 
 // Long names wrap after "_", "-", "." and spaces instead of being cut off. A part with no such
-// break is kept whole, and the Groups and Measurements panes scroll sideways to show it.
+// break is kept whole; widen the side panel to fit it, or the panel scrolls sideways.
 const NAME_BREAKS = /(?<=[-_.\s])/;
 
 function wrapName(text) {
@@ -1141,7 +1141,8 @@ async function stopServer() {
 // ---------------------------------------------------------------------------
 
 const UI_KEY = "mft-parser-ui";
-const ui = { collapsed: [], sidebarHidden: false };
+const ui = { collapsed: [], sidebarHidden: false, sidebarWidth: 380 };
+const SIDEBAR_WIDTH = { initial: 380, min: 280, mainMin: 360 };
 
 function loadUi() {
   try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY)) || {}); } catch { /* storage unavailable */ }
@@ -1173,6 +1174,53 @@ function setSidebarHidden(hidden) {
   saveUi();
   if (!hidden) document.querySelectorAll("textarea.group-name").forEach(fitHeight);
   resizeCharts();
+}
+
+// The side panel's width, kept between 280 px and what leaves the charts at least 360 px.
+function setSidebarWidth(width, save = true) {
+  const max = Math.max(SIDEBAR_WIDTH.min, window.innerWidth - SIDEBAR_WIDTH.mainMin);
+  ui.sidebarWidth = Math.round(Math.min(max, Math.max(SIDEBAR_WIDTH.min, Number(width) || SIDEBAR_WIDTH.initial)));
+  document.documentElement.style.setProperty("--sidebar-w", `${ui.sidebarWidth}px`);
+  $("#sidebarResizer").setAttribute("aria-valuenow", ui.sidebarWidth);
+  if (save) saveUi();
+}
+
+function afterSidebarResize() {
+  document.querySelectorAll("textarea.group-name").forEach(fitHeight);
+  resizeCharts();
+}
+
+// Drag the handle (or focus it and use ← →) to change the side panel's width; double-click resets it.
+function setupSidebarResizer() {
+  const handle = $("#sidebarResizer");
+  let dragging = false;
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragging = true;
+    handle.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing");
+  });
+  handle.addEventListener("pointermove", (e) => { if (dragging) setSidebarWidth(e.clientX, false); });
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("resizing");
+    saveUi();
+    afterSidebarResize();
+  };
+  handle.addEventListener("pointerup", stop);
+  handle.addEventListener("pointercancel", stop);
+  handle.addEventListener("dblclick", () => { setSidebarWidth(SIDEBAR_WIDTH.initial); afterSidebarResize(); });
+  handle.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const step = e.shiftKey ? 80 : 20;
+    setSidebarWidth(ui.sidebarWidth + (e.key === "ArrowRight" ? step : -step));
+    afterSidebarResize();
+  });
+  window.addEventListener("resize", () => setSidebarWidth(ui.sidebarWidth, false));
+  setSidebarWidth(ui.sidebarWidth, false);
 }
 
 function hideMetric(metric) {
@@ -1328,6 +1376,7 @@ function wire() {
   });
   loadUi();
   setupCollapsibleSections();
+  setupSidebarResizer();
   setSidebarHidden(ui.sidebarHidden);
 
   $("#exportForm").addEventListener("submit", (e) => {

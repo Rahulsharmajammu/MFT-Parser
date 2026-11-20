@@ -38,8 +38,8 @@ body {
 }
 
 #sidebar {
-  width: 380px;
-  min-width: 380px;
+  flex: none;
+  width: var(--sidebar-w, 380px);
   height: 100vh;
   overflow-y: auto;
   background: var(--surface-1);
@@ -147,11 +147,22 @@ td.name { min-width: 8em; }
 tr.sel td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .badge { display: inline-block; border-radius: 4px; padding: 0 4px; margin: 1px; font-size: 11px; border: 1px solid var(--border); color: var(--text-secondary); }
 
-/* Groups and Measurements panes: names wrap at "_", "-", "." and spaces; whatever still doesn't
-   fit (a long unbroken name, many group badges) scrolls sideways instead of being cut off. */
-.hscroll { overflow: auto; max-height: 60vh; }
+/* Names wrap at "_", "-", "." and spaces. Widen the side panel to fit more on a line; anything that
+   still doesn't fit scrolls the panel sideways rather than being cut off. */
 #groups { display: grid; grid-template-columns: minmax(min-content, 1fr); align-content: start; }
 #measTable th { z-index: 1; }
+
+/* Drag handle between the side panel and the charts */
+.sidebar-resizer {
+  flex: none; width: 8px; margin: 0 -4px; position: relative; z-index: 3;
+  cursor: col-resize; touch-action: none;
+}
+.sidebar-resizer:hover, .sidebar-resizer:focus-visible, body.resizing .sidebar-resizer {
+  outline: none; background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing main { pointer-events: none; }
+body.sidebar-hidden .sidebar-resizer { display: none; }
 
 main { flex: 1; height: 100vh; overflow-y: auto; padding: 0 16px 24px; min-width: 0; }
 .tabs { position: sticky; top: 0; z-index: 2; background: var(--surface-0); display: flex; gap: 6px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }

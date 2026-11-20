@@ -22,8 +22,10 @@ function openReportDialog(groups) {
   const samples = reportable.filter((g) => !isRef(g));
   const refs = reportable.filter(isRef);
   $("#rpGroups").replaceChildren(...(samples.length ? samples.map(option) : [el("span", { class: "muted small" }, "No sample groups.")]));
-  $("#rpRefs").replaceChildren(...refs.map(option));
-  $("#rpRefBox").hidden = !refs.length;
+  // The section stays visible when there are no reference groups, with a hint on how to make one.
+  $("#rpRefs").replaceChildren(...(refs.length ? refs.map(option) : [el("span", { class: "muted small" },
+    "None yet. To add one, open a group's card in the side panel and set its Role to Blue Wool standard or Comparison.")]));
+  $("#rpRefChoice").hidden = !refs.length;
   setReportPicks([...groups, ...refs.filter((g) => g.visible)]);
   // Opened from a reference group's own card: the report is about that group, so include its data
   // this time. Otherwise use the user's last choice.
