@@ -51,6 +51,8 @@ Images are kept in the browser and downscaled to at most 1600 px.
 ## Workflow
 
 1. **Load** the files. Measurements appear in the table, and you can hover a name to see its header metadata.
+   Long names wrap after `_`, `-`, `.` and spaces so they can be read in full, in the table, on the group
+   cards and in the group names. If a name still doesn't fit, the Groups and Measurements panes scroll sideways.
 2. **Group** the replicates:
    - Select rows and click **New group from selection**. You can filter by text or by `/regex/`,
      use the header checkbox to select everything shown, and shift-click to select a range.
@@ -98,6 +100,9 @@ Images are kept in the browser and downscaled to at most 1600 px.
    - The minus button in a chart's toolbar hides that chart; turn it back on with its chip under Charts.
    - The **a\*b\* trajectory** chart plots b\* against a\* at equal scale. An open circle marks
      the start and a filled circle the end.
+   - Hover over a line to see what it is. The line turns bold, the other lines fade, and the label
+     (bordered in the line's colour) gives the reading's name. On a mean line the label also lists
+     the readings that make up the mean.
 6. **Overview images** (the **Overview** tab): add a photo of the whole object, separate from
    the close-up images the Microfader camera takes. Drag on the photo to mark measured areas with a
    rectangle or ellipse, or click to place a point. Give each mark a label and link it to a group or
@@ -110,12 +115,23 @@ Images are kept in the browser and downscaled to at most 1600 px.
    - **Report…** opens the report dialog with the visible groups ticked; the ▤ button on a group
      card opens it with just that group ticked. Tick any groups you want (**Visible / All / None**
      help), then choose one file with a section per group, or a separate file for each group.
+   - Blue Wool standards and comparisons have their own list in the report dialog. Ticked ones are
+     drawn on every chart. Choose **Curves on the charts only**, or **Curves, plus a section with their
+     data** to also get their patches, tables and measurements. The ▤ button on a Blue Wool card
+     picks the second option for that report.
      Reports are self-contained HTML files. Each group section has:
-     - before/after colour patches (sRGB renderings of the measured L\*a\*b\*)
-     - mean ± SD at the end of exposure
+     - before/after colour patches in sRGB (see below)
+     - mean ± SD at the end of exposure and the curve fits, side by side in two columns
      - a table of the measurements as recorded
-     - curve fits, charts and matched images
+     - charts and matched images
      - its location on the overview images, with that group's marks highlighted
+
+     The colour patches are the measured L\*a\*b\* converted to sRGB. The illuminant in the file
+     header is used as the white, and non-D65 data (D50, A, …) is adapted to D65 with Bradford. A colour
+     outside the sRGB gamut isn't clipped channel by channel, which would shift its hue. Instead its
+     chroma is reduced at the measured L\* and hue until it fits. Its caption then shows the change, for
+     example `C* 60.2 → 34.2†`. Every patch caption gives the sRGB hex value. The patches are drawn as
+     SVG, so they print even when the browser's "Background graphics" print option is off.
 
      The overview images with all marks and a key appear once at the top. To get a PDF, open the
      report and use the browser's Print → Save as PDF. For separate files, the browser may ask once

@@ -169,6 +169,14 @@ function safeFilename(s) {
     .replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, " ").trim() || "export";
 }
 
+// Long names wrap after "_", "-", "." and spaces instead of being cut off. A part with no such
+// break is kept whole, and the Groups and Measurements panes scroll sideways to show it.
+const NAME_BREAKS = /(?<=[-_.\s])/;
+
+function wrapName(text) {
+  return String(text).split(NAME_BREAKS).flatMap((part, i) => (i ? [el("wbr"), part] : [part]));
+}
+
 function fmtNum(v, digits = 3) {
   return v == null || !Number.isFinite(v) ? "–" : Number(v).toFixed(digits);
 }
@@ -345,6 +353,14 @@ function renderGroups() {
     return;
   }
   wrap.replaceChildren(...state.groups.map(groupCard));
+  wrap.querySelectorAll("textarea.group-name").forEach(fitHeight);
+}
+
+// Grows a textarea to fit its text (for browsers without CSS field-sizing).
+function fitHeight(ta) {
+  if (CSS.supports("field-sizing", "content") || !ta.isConnected || !ta.offsetParent) return;
+  ta.style.height = "auto";
+  ta.style.height = `${ta.scrollHeight}px`;
 }
 
 // ---------------------------------------------------------------------------
@@ -414,10 +430,19 @@ function groupCard(g) {
       onchange: (e) => { g.visible = e.target.checked; renderGroups(); scheduleRender(); },
     }),
     swatch(g),
-    el("input", {
-      type: "text", value: g.name, title: "Rename group",
-      onchange: (e) => { g.name = e.target.value || g.name; renderGroupSelect(); renderTable(); scheduleRender(); },
-    }),
+    // A textarea rather than an input so long names wrap and stay readable. Enter finishes editing.
+    el("textarea", {
+      class: "group-name", rows: 1, spellcheck: false, title: "Rename group",
+      oninput: (e) => fitHeight(e.target),
+      onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } },
+      onchange: (e) => {
+        const name = e.target.value.replace(/\s+/g, " ").trim();
+        if (name) g.name = name;
+        e.target.value = g.name;
+        fitHeight(e.target);
+        renderGroupSelect(); renderTable(); scheduleRender();
+      },
+    }, g.name),
     isRef(g) ? el("span", { class: "badge", title: ROLES[g.role] }, ROLE_SHORT[g.role]) : null,
     el("span", { class: "muted small" }, `${included}/${g.members.length}`),
     el("button", { class: "icon-btn", title: "Report for this group", onclick: () => openReportDialog([g]) }, "▤"),
@@ -466,7 +491,7 @@ function groupCard(g) {
               renderGroups(); scheduleRender();
             },
           }),
-          el("span", { title: id }, id + (state.measurements.has(id) ? "" : " (not loaded)")),
+          el("span", { class: "name", title: id }, wrapName(id), state.measurements.has(id) ? "" : " (not loaded)"),
           nImg ? el("span", { class: "muted small", title: imagesFor(id).join("\n") }, `${nImg} img`) : null,
           el("button", {
             class: "icon-btn", title: "Remove from group",
@@ -505,10 +530,10 @@ function renderTable() {
         type: "checkbox", checked: sel,
         onclick: (e) => toggleSelect(id, e.target.checked, e.shiftKey, ids),
       })),
-      el("td", { class: "name", title: tip }, id),
+      el("td", { class: "name", title: tip }, wrapName(id)),
       el("td", {}, String(m.columns.time.length)),
       el("td", {}, imgCount.get(id) ? String(imgCount.get(id)) : ""),
-      el("td", {}, ...(groupsOf.get(id) || []).map((n) => el("span", { class: "badge" }, n))));
+      el("td", { class: "groups" }, ...(groupsOf.get(id) || []).map((n) => el("span", { class: "badge" }, wrapName(n)))));
   }));
   const allShownSelected = ids.length > 0 && ids.every((id) => state.selection.has(id));
   $("#selectAll").checked = allShownSelected;
@@ -643,7 +668,7 @@ function buildTraces(metric, result, view, theme, withLegend = false) {
         legendgroup: g.id, showlegend: withLegend && !meanFaint,
         line: { color, width: meanFaint ? 1.25 : ref ? 2 : 2.25, dash }, opacity: meanFaint ? 0.55 : 1,
         customdata: sd, _ref: ref, _label: ref ? g.name : null,
-        hovertemplate: `<b>${g.name}</b>${ref ? ` (${ROLES[g.role]})` : ""} (n=${avg.n})<br>x=%{x:${fmt}}<br>mean=%{y:.3f} ± %{customdata:.3f}<extra></extra>`,
+        hovertemplate: `<b>${g.name}</b>${ref ? ` (${ROLES[g.role]})` : ""} (n=${avg.n})<br>${readingList(r)}x=%{x:${fmt}}<br>mean=%{y:.3f} ± %{customdata:.3f}<extra></extra>`,
       });
     }
     if (sm && !ref) {
@@ -670,7 +695,7 @@ function buildTraces(metric, result, view, theme, withLegend = false) {
       });
     }
   }
-  return traces;
+  return tintHoverLabels(traces);
 }
 
 function abTraces(result, view, theme, withLegend) {
@@ -715,7 +740,42 @@ function abTraces(result, view, theme, withLegend) {
       }
     }
   }
+  return tintHoverLabels(traces);
+}
+
+// The readings behind a mean line, for its hover label.
+function readingList(r, max = 8) {
+  const ids = r.replicates.map((rep) => rep.id);
+  if (ids.length < 2) return "";
+  const shown = ids.slice(0, max).join("<br>");
+  return `<span style="font-size:0.9em">${shown}${ids.length > max ? `<br>+ ${ids.length - max} more` : ""}</span><br>`;
+}
+
+// Hover labels get a border in their line's colour, so it is clear which line they name.
+function tintHoverLabels(traces) {
+  for (const t of traces) if (t.line && t.line.color && t.hoverinfo !== "skip") t.hoverlabel = { bordercolor: t.line.color };
   return traces;
+}
+
+// While the pointer is on a line, that line is drawn bold and every other line fades.
+function wireHoverHighlight(div) {
+  if (div._hoverHighlight) return;
+  div._hoverHighlight = true;
+  const clear = () => {
+    div.classList.remove("hl-active");
+    div.querySelectorAll(".scatterlayer .trace.hl").forEach((t) => t.classList.remove("hl"));
+  };
+  div.on("plotly_hover", (ev) => {
+    clear();
+    const curves = new Set(ev.points.map((p) => p.curveNumber));
+    div.querySelectorAll(".scatterlayer .trace").forEach((t) => {
+      const cd = t.__data__; // Plotly binds each trace's calcdata to its <g class="trace">
+      if (cd && cd[0] && cd[0].trace && curves.has(cd[0].trace.index)) t.classList.add("hl");
+    });
+    if (div.querySelector(".scatterlayer .trace.hl")) div.classList.add("hl-active");
+  });
+  div.on("plotly_unhover", clear);
+  div.on("plotly_afterplot", clear);
 }
 
 // References are drawn first so the samples sit on top of them.
@@ -837,7 +897,8 @@ function renderMetricCharts() {
   charts.replaceChildren(...divs);
   wanted.forEach((m, i) => {
     const traces = buildTraces(m.key, lastResult, state.settings.view, theme);
-    Plotly.react(divs[i], traces, finishLayout(m.key, traces, baseLayout(m.key, theme), theme), screenConfig(m.key));
+    Plotly.react(divs[i], traces, finishLayout(m.key, traces, baseLayout(m.key, theme), theme), screenConfig(m.key))
+      .then(() => wireHoverHighlight(divs[i]));
   });
 }
 
@@ -915,8 +976,9 @@ function renderSpectra() {
     return l;
   };
   const cfg = { responsive: true, displaylogo: false, toImageButtonOptions: { format: "png", scale: 3 } };
-  Plotly.react(a, startTraces, layout("Spectra — start (solid) / end (dotted)", "Sample spectrum (as recorded)"), cfg);
-  Plotly.react(b, diffTraces, layout("Spectral change", "End − start"), cfg);
+  Plotly.react(a, tintHoverLabels(startTraces), layout("Spectra — start (solid) / end (dotted)", "Sample spectrum (as recorded)"), cfg)
+    .then(() => wireHoverHighlight(a));
+  Plotly.react(b, tintHoverLabels(diffTraces), layout("Spectral change", "End − start"), cfg).then(() => wireHoverHighlight(b));
 }
 
 // ---------------------------------------------------------------------------
@@ -1099,6 +1161,7 @@ function setupCollapsibleSections() {
       const collapsed = sec.classList.toggle("collapsed");
       ui.collapsed = collapsed ? [...new Set([...ui.collapsed, key])] : ui.collapsed.filter((k) => k !== key);
       saveUi();
+      if (!collapsed) sec.querySelectorAll("textarea.group-name").forEach(fitHeight);
     });
   });
 }
@@ -1108,6 +1171,7 @@ function setSidebarHidden(hidden) {
   document.body.classList.toggle("sidebar-hidden", hidden);
   $("#showSidebar").hidden = !hidden;
   saveUi();
+  if (!hidden) document.querySelectorAll("textarea.group-name").forEach(fitHeight);
   resizeCharts();
 }
 
@@ -1243,6 +1307,7 @@ function wire() {
   $("#rpPickVisible").addEventListener("click", () => setReportPicks(visibleGroups()));
   $("#rpPickAll").addEventListener("click", () => setReportPicks(state.groups));
   $("#rpPickNone").addEventListener("click", () => setReportPicks([]));
+  document.querySelectorAll("input[name=rpRefData]").forEach((r) => r.addEventListener("change", () => { reportRefData = r.value; }));
   $("#stopServer").addEventListener("click", stopServer);
   $("#hideSidebar").addEventListener("click", () => setSidebarHidden(true));
   $("#showSidebar").addEventListener("click", () => setSidebarHidden(false));
