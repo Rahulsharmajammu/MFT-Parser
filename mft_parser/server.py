@@ -19,6 +19,16 @@ PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
 app = FastAPI(title="MFT-Parser", version=__version__)
 
 
+@app.middleware("http")
+async def no_stale_frontend(request: Request, call_next):
+    # Make the browser re-check the page and its scripts on every load (a cheap 304 when unchanged),
+    # so an updated MFT-Parser shows up after a normal reload instead of running cached old files.
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.post("/api/parse")
 async def api_parse(files: list[UploadFile] = File(...)):
     texts = {}

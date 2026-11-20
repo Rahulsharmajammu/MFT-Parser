@@ -14,6 +14,11 @@ def test_index_and_vendor():
     assert client.get("/vendor/plotly.min.js").status_code == 200
 
 
+def test_frontend_is_revalidated():
+    for path in ("/", "/static/app.js", "/static/report.js", "/static/style.css"):
+        assert client.get(path).headers["cache-control"] == "no-cache"
+
+
 def test_parse_then_process():
     files = [("files", (p.name, p.read_bytes())) for p in DATA.glob("*.txt")]
     data = client.post("/api/parse", files=files).json()
