@@ -52,7 +52,8 @@ Images are kept in the browser and downscaled to at most 1600 px.
 
 1. **Load** the files. Measurements appear in the table, and you can hover a name to see its header metadata.
    Long names wrap after `_`, `-`, `.` and spaces so they can be read in full, in the table, on the group
-   cards and in the group names. If a name still doesn't fit, the Groups and Measurements panes scroll sideways.
+   cards and in the group names. Drag the side panel's right edge to make it wider or narrower; double-click
+   the edge to reset it. The browser remembers the width. If a name still doesn't fit, the panel scrolls sideways.
 2. **Group** the replicates:
    - Select rows and click **New group from selection**. You can filter by text or by `/regex/`,
      use the header checkbox to select everything shown, and shift-click to select a range.

@@ -108,7 +108,7 @@
         <button id="hideAllGroups" class="btn small ghost">None</button>
       </div>
     </div>
-    <div id="groups" class="hscroll"></div>
+    <div id="groups"></div>
     <div class="drop-zones">
       <div id="dropNewGroup" class="drop-zone">＋ Drop here for a new group</div>
       <div id="dropRemove" class="drop-zone remove">Drop here to remove from group</div>
@@ -126,14 +126,14 @@
       <button id="newGroup" class="btn small primary">New group from selection</button>
       <select id="addToGroup" class="small"><option value="">Add selection to…</option></select>
     </div>
-    <div class="hscroll">
-      <table id="measTable">
-        <thead><tr><th><input type="checkbox" id="selectAll" title="Select all shown"></th><th>Measurement</th><th>Pts</th><th title="Matched images">Img</th><th>Groups</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <table id="measTable">
+      <thead><tr><th><input type="checkbox" id="selectAll" title="Select all shown"></th><th>Measurement</th><th>Pts</th><th title="Matched images">Img</th><th>Groups</th></tr></thead>
+      <tbody></tbody>
+    </table>
   </section>
 </aside>
+<div id="sidebarResizer" class="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Side panel width"
+  tabindex="0" title="Drag to change the side panel's width. Double-click to reset."></div>
 
 <main>
   <nav class="tabs">
@@ -216,7 +216,7 @@
     <div id="rpRefBox">
       <span class="muted small">Blue Wool standards and comparisons (ticked ones are drawn on the charts)</span>
       <div id="rpRefs" class="rp-groups"></div>
-      <div class="checks tight">
+      <div id="rpRefChoice" class="checks tight">
         <label><input type="radio" name="rpRefData" value="curves" checked> Curves on the charts only</label>
         <label><input type="radio" name="rpRefData" value="sections"> Curves, plus a section with their data (patches, tables, measurements)</label>
       </div>
